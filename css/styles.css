@@ -208,7 +208,7 @@ h1 em { font-style: italic; color: var(--accent-hi); }
 .day { padding: 10px 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--card-hi); min-height: 110px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .day.is-today { border-color: var(--accent-hi); box-shadow: inset 0 0 0 1px var(--accent-hi); }
 .day-name { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
-.pill { font-size: 12px; padding: 5px 7px; border-radius: 9px; line-height: 1.25; border-left: 3px solid var(--c, var(--accent)); background: var(--card); overflow: hidden; text-overflow: ellipsis; }
+.pill { font: inherit; font-size: 12px; text-align: left; color: inherit; border-top: 0; border-right: 0; border-bottom: 0; cursor: pointer; width: 100%; padding: 5px 7px; border-radius: 9px; line-height: 1.25; border-left: 3px solid var(--c, var(--accent)); background: var(--card); overflow: hidden; text-overflow: ellipsis; }
 .pill.done { opacity: .55; text-decoration: line-through; }
 .pill small { display: block; color: var(--faint); }
 .rest { font-size: 12px; color: var(--faint); margin-top: auto; }
@@ -260,18 +260,126 @@ h1 em { font-style: italic; color: var(--accent-hi); }
 .ghost { background: transparent; }
 .btn:hover, .ghost:hover { background: var(--card-hi); border-color: var(--accent-hi); }
 
-/* Settings sheet */
-.sheet { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: 24px; padding: 0;
-  background: var(--bg-1); color: var(--text); box-shadow: 0 40px 80px -20px rgba(0,0,0,.6); }
-.sheet::backdrop { background: rgba(0,0,0,.45); backdrop-filter: blur(6px); }
-.sheet-inner { padding: 24px; display: grid; gap: 14px; }
+/* ───────────── Sync indicator ───────────── */
+.gear { position: relative; }
+.sync-dot { position: absolute; right: -1px; top: -1px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--bg-0); background: var(--faint); }
+.sync-dot[data-state="off"] { display: none; }
+.sync-dot[data-state="ok"] { background: var(--ok); }
+.sync-dot[data-state="syncing"] { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
+.sync-dot[data-state="error"] { background: #ff7a7a; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+/* ───────────── Space transitions ───────────── */
+.grid[data-dir="next"] .card { animation-name: in-next; }
+.grid[data-dir="prev"] .card { animation-name: in-prev; }
+@keyframes in-next { from { opacity: 0; transform: translateX(24px); } }
+@keyframes in-prev { from { opacity: 0; transform: translateX(-24px); } }
+
+/* ───────────── Settings sheet ───────────── */
+.sheet { width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: 24px; padding: 0;
+  background: var(--bg-1); color: var(--text); box-shadow: 0 40px 80px -20px rgba(0,0,0,.6); overscroll-behavior: contain; }
+.sheet[open] { animation: sheet-in .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(16px) scale(.98); } }
+.sheet::backdrop { background: rgba(0,0,0,.45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.sheet-inner { padding: 22px 24px 24px; display: grid; gap: 18px; }
+.grabber { display: none; }
 .sheet-head, .sheet-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.sheet-foot { position: sticky; bottom: -24px; padding: 12px 0 0; background: linear-gradient(transparent, var(--bg-1) 30%); }
 .sheet h2 { margin: 0; font-family: "Fraunces", Georgia, serif; font-weight: 400; font-size: 28px; }
-.sheet label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
-.sheet small { color: var(--faint); }
-.sheet input, .sheet textarea { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card-hi); color: var(--text); outline: none; }
-.sheet textarea { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
-.sheet input:focus, .sheet textarea:focus { border-color: var(--accent-hi); }
+.sheet fieldset { border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px 16px; margin: 0; display: grid; gap: 12px; background: var(--card); min-width: 0; }
+.sheet legend { padding: 0 6px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.sheet label, .sheet .field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.sheet input, .sheet textarea, .sheet select { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card-hi); color: var(--text); outline: none; min-width: 0; width: 100%; }
+.sheet select { appearance: none; -webkit-appearance: none; }
+.sheet textarea { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; margin-top: 8px; }
+.sheet input:focus, .sheet textarea:focus, .sheet select:focus { border-color: var(--accent-hi); }
+.sheet .toggle { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 14px; }
+.sheet .toggle input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+.sync-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.muted { color: var(--muted); font-size: 13px; }
+.hint { margin: 0; font-size: 12px; color: var(--faint); }
+.hint code { font-size: 11.5px; }
+.themes.in-sheet { width: max-content; }
+.sheet details summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
+.btn.sm { padding: 6px 12px; font-size: 13px; }
+.icon-btn.sm { width: 32px; height: 32px; font-size: 13px; flex: none; }
+.link { border: 0; background: none; color: var(--accent-hi); font-size: 13px; padding: 4px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 600px) { .row2 { grid-template-columns: 1fr; } }
 .err { color: #ff8f8f; margin: 0; font-size: 13px; min-height: 1em; }
+
+/* Schedule editor */
+.sched { display: grid; gap: 10px; }
+.sd { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.sd:last-child { border-bottom: 0; padding-bottom: 0; }
+.sd header { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+.sd .rest { margin: 0; }
+.sr { display: grid; grid-template-columns: 92px 1fr 70px 140px 32px; gap: 6px; align-items: center; }
+
+/* ───────────── Phone ───────────── */
+@media (max-width: 720px) {
+  html { -webkit-text-size-adjust: 100%; }
+  body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+  button { touch-action: manipulation; }
+
+  .shell { padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 104px); }
+
+  /* Header: компактное приветствие, маленькие часы справа */
+  .top { display: block; position: relative; }
+  .eyebrow { font-size: 11px; margin-bottom: 4px; padding-right: 110px; }
+  h1 { font-size: 34px; line-height: 1.08; }
+  .sub { font-size: 14.5px; margin-top: 8px; }
+  .clock-wrap { position: absolute; right: 0; top: -4px; display: flex; align-items: center; gap: 10px; flex-direction: row-reverse; }
+  .clock { font-size: 22px; }
+  .top-actions { margin: 0; }
+  .top-actions > .themes { display: none; }
+
+  /* Пространства — плавающий таб‑бар снизу */
+  .spaces { position: fixed; z-index: 10; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 10px); margin: 0;
+    display: grid; grid-template-columns: repeat(var(--n, 3), 1fr); gap: 4px; padding: 6px; border-radius: 24px;
+    background: color-mix(in srgb, var(--bg-1) 72%, transparent); backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%);
+    box-shadow: 0 16px 40px -12px rgba(0,0,0,.55); }
+  .space { flex-direction: column; gap: 2px; padding: 8px 4px; border-radius: 18px; font-size: 11.5px; font-weight: 500; }
+  .space-ico { font-size: 20px; line-height: 1.1; }
+  .space kbd { display: none; }
+  .space-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .grid { gap: 12px; margin-top: 22px; }
+  .card { padding: 16px; border-radius: 20px; }
+  .card-head { margin-bottom: 12px; }
+  .big-title { font-size: 21px; }
+  .check { width: 28px; height: 28px; border-radius: 9px; }
+  .wo { padding: 12px; }
+
+  /* Неделя — горизонтальная лента со снапом */
+  .week { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 8px; margin: 0 -16px; padding: 2px 16px 4px; scrollbar-width: none; }
+  .week::-webkit-scrollbar { display: none; }
+  .day { flex: 0 0 40%; scroll-snap-align: center; min-height: 118px; }
+
+  .gh-list, .todo-list { max-height: none; }
+  .gh-item a { padding: 12px 8px; }
+  .stat b { font-size: 28px; }
+  .focus-time { font-size: 52px; }
+  .focus-btns button { min-width: 64px; padding: 11px 16px; }
+  .todo { padding: 10px 6px; }
+
+  input, select, textarea, .todo-add input { font-size: 16px !important; } /* без автозума на iOS */
+
+  /* Настройки — нижняя панель */
+  .sheet { width: 100vw; max-width: 100vw; max-height: 92vh; margin: auto 0 0; border-radius: 26px 26px 0 0; border-bottom: 0; }
+  .sheet[open] { animation: sheet-up .32s cubic-bezier(.2,.8,.2,1); }
+  @keyframes sheet-up { from { transform: translateY(100%); } }
+  .sheet-inner { padding: 8px 16px calc(env(safe-area-inset-bottom) + 16px); gap: 14px; }
+  .sheet-foot { bottom: calc(-16px - env(safe-area-inset-bottom)); padding-bottom: calc(env(safe-area-inset-bottom) + 4px); }
+  .grabber { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 2px; }
+  .row2 { grid-template-columns: 1fr; }
+  .sr { grid-template-columns: 1fr 1fr 32px; }
+  .sr [name="title"] { grid-column: 1 / -1; order: -1; }
+  .sr [name="time"] { grid-column: 1; }
+  .sr [name="duration"] { grid-column: 2; }
+  .sr [name="type"] { grid-column: 1 / 3; }
+  .sr .icon-btn { grid-column: 3; grid-row: 2 / 4; align-self: center; }
+}
+@media (hover: none) { .todo .del { opacity: .55; } }
+
+/* Запущено как приложение с экрана «Домой» */
+@media (display-mode: standalone) { body { user-select: none; -webkit-user-select: none; } input, textarea { user-select: text; -webkit-user-select: text; } }

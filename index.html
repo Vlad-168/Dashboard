@@ -2,8 +2,23 @@
 <html lang="ru" data-theme="damson">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Dashboard</title>
+
+  <!-- PWA / iPhone -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#1d0f17" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Dashboard" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <script>
+    // Ставим тему до отрисовки, чтобы не было вспышки
+    try { var t = JSON.parse(localStorage.getItem("dash.theme")); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="css/styles.css" />
@@ -23,8 +38,8 @@
       <div class="clock-wrap">
         <div class="clock" id="clock">00:00</div>
         <div class="top-actions">
-          <div class="themes" id="themes" role="radiogroup" aria-label="Тема"></div>
-          <button class="icon-btn" id="openSettings" title="Настройки (,)">⚙︎</button>
+          <div class="themes" data-themes role="radiogroup" aria-label="Тема"></div>
+          <button class="icon-btn gear" id="openSettings" title="Настройки (,)" aria-label="Настройки">⚙︎<i class="sync-dot" id="syncDot"></i></button>
         </div>
       </div>
     </header>
@@ -34,28 +49,52 @@
     <section class="grid" id="grid"></section>
   </main>
 
-  <!-- Settings -->
+  <!-- Settings: справа на Mac, выезжающая снизу панель на телефоне -->
   <dialog id="settings" class="sheet">
     <form method="dialog" class="sheet-inner" id="settingsForm">
+      <div class="grabber" aria-hidden="true"></div>
       <header class="sheet-head">
         <h2>Настройки</h2>
-        <button class="icon-btn" value="cancel" title="Закрыть">✕</button>
+        <button class="icon-btn" value="cancel" aria-label="Закрыть">✕</button>
       </header>
-      <label>Как к тебе обращаться<input name="name" autocomplete="off" /></label>
-      <div class="row2">
-        <label>GitHub username<input name="ghUser" autocomplete="off" /></label>
-        <label>GitHub token <small>(fine‑grained, read‑only)</small><input name="ghToken" type="password" autocomplete="off" placeholder="github_pat_…" /></label>
-      </div>
-      <label>Пространства <small>(JSON)</small><textarea name="spaces" rows="7" spellcheck="false"></textarea></label>
-      <label>Расписание тренировок <small>(JSON: mon…sun)</small><textarea name="schedule" rows="10" spellcheck="false"></textarea></label>
+
+      <fieldset>
+        <legend>Профиль</legend>
+        <label>Как к тебе обращаться<input name="name" autocomplete="off" /></label>
+        <div class="field">Тема<div class="themes in-sheet" data-themes role="radiogroup" aria-label="Тема"></div></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>GitHub и синхронизация</legend>
+        <div class="row2">
+          <label>Username<input name="ghUser" autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
+          <label>Токен<input name="ghToken" type="password" autocomplete="off" placeholder="github_pat_…" /></label>
+        </div>
+        <label class="toggle"><input type="checkbox" name="syncOn" /> <span>Синхронизировать Mac и телефон через приватный Gist</span></label>
+        <div class="sync-row"><span id="syncLine" class="muted"></span><button type="button" class="btn sm" id="syncNow">Синхронизировать</button></div>
+        <p class="hint">Токен хранится только на этом устройстве. Нужные права: Issues и Pull requests — read, Gists — read &amp; write.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Расписание тренировок</legend>
+        <div id="schedEditor" class="sched"></div>
+      </fieldset>
+
+      <details>
+        <summary>Пространства (для продвинутых)</summary>
+        <p class="hint">Виджеты: today, week, stats, github, todo, focus. В <code>repos</code> можно ограничить GitHub нужными репозиториями.</p>
+        <textarea name="spaces" rows="10" spellcheck="false"></textarea>
+      </details>
+
       <p class="err" id="settingsErr"></p>
       <footer class="sheet-foot">
-        <button type="button" class="ghost" id="resetSettings">Сбросить к config.local.js</button>
+        <button type="button" class="ghost" id="resetSettings">Сбросить</button>
         <button type="submit" class="primary" value="save">Сохранить</button>
       </footer>
     </form>
   </dialog>
 
+  <script src="js/data.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

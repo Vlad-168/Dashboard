@@ -1,36 +1,59 @@
-# Dashboard — рабочий стол macOS
+# Dashboard — рабочий стол macOS + iPhone
 
 Личный дашборд прямо на рабочем столе: приветствие, часы, расписание тренировок,
 задачи из GitHub, todo и фокус‑таймер. Разные **пространства** (Работа / Спорт / Личное)
 и **6 тем**, основная — **Damson `#854C65`**.
 
-## Установка на Mac (5 минут)
+## 1. Публикация (один раз)
 
-1. Склонируй репозиторий:
-   ```bash
-   git clone https://github.com/vlad-168/dashboard.git ~/Dashboard && cd ~/Dashboard
-   ```
-2. Запусти локальный сервер с автозапуском при входе в систему:
-   ```bash
-   ./scripts/install-macos.sh      # откроет http://localhost:8787
-   ```
-3. Поставь бесплатное приложение **[Plash](https://apps.apple.com/app/plash/id1494023538)**
-   (App Store) — оно показывает веб‑страницу вместо обоев.
-   Plash → *Add Website* → `http://localhost:8787`.
-4. Чтобы кликать по дашборду (отмечать тренировки, переключать пространства) —
-   включи в меню Plash **Browsing Mode** (можно повесить на горячую клавишу).
+1. GitHub → репозиторий → **Settings → General → Danger Zone → Change visibility → Public**.
+   Секретов в коде нет: токен хранится только на устройствах, `config.local.js` не коммитится.
+2. **Settings → Pages** → Source: *Deploy from a branch* → `master` / `(root)` → Save.
+3. Через минуту дашборд доступен по адресу **https://vlad-168.github.io/Dashboard/**
 
-Удалить автозапуск: `./scripts/uninstall-macos.sh`.
+## 2. Mac — на рабочий стол
+
+1. Поставь бесплатное **[Plash](https://apps.apple.com/app/plash/id1494023538)** из App Store.
+2. Plash → *Add Website* → `https://vlad-168.github.io/Dashboard/`.
+3. Чтобы кликать по дашборду — включи в меню Plash **Browsing Mode** (можно на горячую клавишу).
+
+<details><summary>Вариант без интернета: локальный сервер</summary>
+
+```bash
+git clone https://github.com/vlad-168/dashboard.git ~/Dashboard && cd ~/Dashboard
+./scripts/install-macos.sh     # http://localhost:8787 с автозапуском
+```
+Удалить: `./scripts/uninstall-macos.sh`.
+</details>
+
+## 3. iPhone — как приложение
+
+1. Открой **https://vlad-168.github.io/Dashboard/** в **Safari**.
+2. Кнопка «Поделиться» → **«На экран Домой»** → Добавить.
+3. Запусти с иконки → ⚙︎ → вставь GitHub‑токен → **Синхронизировать**.
+   Расписание, задачи и отметки подтянутся с Mac.
+
+На телефоне: пространства — в таб‑баре снизу или **свайпом** влево/вправо по карточкам;
+неделя — горизонтальная лента, тап по тренировке отмечает её.
+
+## Синхронизация Mac ↔ iPhone
+
+Данные (расписание, пространства, отметки тренировок, todo) хранятся в **приватном
+GitHub Gist** `dashboard-sync.json` — он создаётся автоматически при первой синхронизации.
+Синхронизация идёт при открытии, при возврате в приложение, раз в минуту и через пару
+секунд после любого изменения. Офлайн всё работает и досинхронизируется при появлении сети.
+Тема и токен — свои на каждом устройстве. Зелёная точка на ⚙︎ — всё синхронизировано.
 
 ## Настройка
 
 Всё настраивается в самом дашборде — кнопка **⚙︎** (или клавиша `,`):
-имя, GitHub, пространства и расписание (JSON). Либо правь `config.local.js`
-(он в `.gitignore`, токен не утечёт в git).
+имя, тема, GitHub, расписание (визуальный редактор) и пространства (JSON в разделе
+«для продвинутых»). Начальные значения берутся из `config.example.js`.
 
 ### GitHub‑токен
-github.com → Settings → Developer settings → **Fine‑grained tokens** → доступ
-*Issues: Read* и *Pull requests: Read* к нужным репозиториям. Без токена работает
+github.com → Settings → Developer settings → **Fine‑grained tokens** →
+Repository permissions: *Issues: Read*, *Pull requests: Read*;
+Account permissions: **Gists: Read and write** (для синхронизации). Без токена работает
 только по публичным репо и с лимитом запросов.
 
 Вкладки виджета: **Мне** (назначенные issues/PR), **Ревью** (ждут твоего ревью), **Мои PR**.
