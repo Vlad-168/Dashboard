@@ -364,6 +364,13 @@
     }[st];
     dot.title = text;
     if (line) { line.textContent = text; line.dataset.state = st; }
+    const info = $("#syncInfo");
+    if (info) {
+      const i = sync.info || {}, id = i.id || store.get("gistId", "");
+      info.innerHTML = id
+        ? `This device syncs with gist <code>${esc(id.slice(0, 7))}</code>${i.owner ? ` of <b>@${esc(i.owner)}</b>` : ""}.${i.gists > 1 ? ` Found ${i.gists} sync gists — merged into the oldest one.` : ""} It must be the same on your Mac and iPhone.`
+        : "Not connected to a sync gist yet.";
+    }
   }
   sync.onStatus = renderSyncStatus;
 
@@ -1166,7 +1173,7 @@
   $("#syncNow").onclick = () => {
     if (sForm.ghToken.value.trim() !== store.get("token", "")) { store.set("token", sForm.ghToken.value.trim()); sync.reset(); }
     store.set("syncOn", true); sForm.syncOn.checked = true;
-    sync.run();
+    sync.check().catch(() => {});
   };
   $("#resetSpaces").onclick = () => {
     if (!confirm("Reset spaces to the default layout? Your training, lessons and tasks stay.")) return;

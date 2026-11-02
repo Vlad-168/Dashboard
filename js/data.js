@@ -62,6 +62,7 @@
 
   async function gh(path, opts = {}) {
     const r = await fetch(API + path, {
+      cache: "no-store", // never use a cached copy: a stale read would overwrite newer data from the other device
       ...opts,
       headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token()}`, ...(opts.body ? { "Content-Type": "application/json" } : {}) },
     });
@@ -73,15 +74,34 @@
     return r.json();
   }
 
-  async function findOrCreateGist() {
-    let id = store.get("gistId", "");
-    if (id) return id;
+  // All sync gists of this account, oldest first. The oldest one is the shared ("canonical") gist.
+  async function listSyncGists() {
+    const found = [];
     for (let page = 1; page <= 5; page++) {
       const list = await gh(`/gists?per_page=100&page=${page}`);
-      const hit = list.find((g) => g.files && g.files[FILE]);
-      if (hit) { id = hit.id; break; }
+      for (const g of list) if (g.files && g.files[FILE]) found.push({ id: g.id, created: g.created_at, owner: g.owner && g.owner.login });
       if (list.length < 100) break;
     }
+    return found.sort((a, b) => a.created.localeCompare(b.created));
+  }
+
+  async function findOrCreateGist(force) {
+    let id = store.get("gistId", "");
+    // Re-check now and then: if two devices ever created separate gists, both converge on the oldest one
+    const rescan = force || !id || Date.now() - store.get("gistScan", 0) > 10 * 60 * 1000;
+    if (!rescan) return id;
+    const all = await listSyncGists();
+    store.set("gistScan", Date.now());
+    sync.info = { owner: all[0]?.owner || store.get("owner", ""), gists: all.length };
+    if (all.length) {
+      const canonical = all[0].id;
+      // Pull in anything that only reached a duplicate gist
+      for (const g of all.slice(1)) {
+        try { mergeIn(await readGist(g.id)); } catch {}
+      }
+      if (id && id !== canonical) try { mergeIn(await readGist(id)); } catch {}
+      id = canonical;
+    } else id = "";
     if (!id) {
       const g = await gh("/gists", { method: "POST", body: JSON.stringify({
         description: "Dashboard sync (do not delete — holds your dashboard data)",
@@ -91,8 +111,20 @@
       id = g.id;
     }
     store.set("gistId", id);
+    sync.info = { ...(sync.info || {}), id };
     return id;
   }
+
+  // Last-write-wins merge of remote records into local ones; returns true if anything changed locally
+  function mergeIn(remote) {
+    let pulled = false;
+    for (const [k, r] of Object.entries(remote || {})) {
+      if (r && (!records[k] || r.t > records[k].t)) { records[k] = r; pulled = true; }
+    }
+    if (pulled) { store.set("db", records); pendingNotify = true; }
+    return pulled;
+  }
+  let pendingNotify = false;
 
   async function readGist(id) {
     const g = await gh(`/gists/${id}`);
@@ -130,14 +162,15 @@
         try { remote = await readGist(id); }
         catch (e) { if (e.status !== 404) throw e; store.del("gistId"); id = await findOrCreateGist(); remote = await readGist(id); }
 
-        let pulled = false, push = false;
-        for (const [k, r] of Object.entries(remote)) {
-          if (!records[k] || r.t > records[k].t) { records[k] = r; pulled = true; }
+        mergeIn(remote);
+        let push = Object.entries(records).some(([k, r]) => !remote[k] || r.t > remote[k].t);
+        if (push) {
+          // Read again right before writing so a change from the other device made a moment ago isn't overwritten
+          const fresh = await readGist(id);
+          mergeIn(fresh);
+          push = Object.entries(records).some(([k, r]) => !fresh[k] || r.t > fresh[k].t);
         }
-        for (const [k, r] of Object.entries(records)) {
-          if (!remote[k] || r.t > remote[k].t) push = true;
-        }
-        if (pulled) { store.set("db", records); listeners.forEach((fn) => fn()); }
+        if (pendingNotify) { pendingNotify = false; listeners.forEach((fn) => fn()); }
         if (push) {
           await gh(`/gists/${id}`, { method: "PATCH", body: JSON.stringify({
             files: { [FILE]: { content: JSON.stringify({ version: 1, records }, null, 1) } },
@@ -155,7 +188,9 @@
       }
     },
 
-    reset() { store.del("gistId"); },
+    reset() { store.del("gistId"); store.del("gistScan"); },
+    info: null,
+    async check() { await findOrCreateGist(true); return this.run(); },
   };
 
   // Синхронизируемся при открытии, при возврате в приложение, раз в минуту и при появлении сети
