@@ -40,8 +40,18 @@
     return j;
   }
 
-  async function fetchAll({ project, apiKey } = {}) {
-    if (!project || !apiKey) throw new Error("add the bot’s Firebase project ID and API key in Settings → Coaching");
+  // Preferred: the bot's API worker (GET /dashboard with the dashboard key) — works after the database is locked down
+  async function fetchFromWorker(apiUrl, key) {
+    const r = await fetch(`${apiUrl.replace(/\/$/, "")}/dashboard`, { headers: { Authorization: `Bearer ${key}` }, cache: "no-store" });
+    if (r.status === 401) throw new Error("the dashboard key was rejected");
+    if (!r.ok) throw new Error(`bot API ${r.status}`);
+    const j = await r.json();
+    return { bookings: j.bookings || [], prices: j.prices || {}, locations: j.locations || [], at: Date.now() };
+  }
+
+  async function fetchAll({ apiUrl, dashKey, project, apiKey } = {}) {
+    if (apiUrl && dashKey) return fetchFromWorker(apiUrl, dashKey);
+    if (!project || !apiKey) throw new Error("add the bot API URL and dashboard key in Settings → Coaching");
     const BASE = baseOf(project), KEY = encodeURIComponent(apiKey);
     const mask = BOOKING_FIELDS.map((f) => `&mask.fieldPaths=${f}`).join("");
     const bookings = [];

@@ -391,7 +391,14 @@ async function main() {
     records = await loadRecords(token);
     const cfgv = (records.cfg && records.cfg.v) || {};
     try { gh = await githubCount((cfgv.github && cfgv.github.username) || "", token); } catch (e) {}
-    if (cfgv.bot && cfgv.bot.enabled && cfgv.bot.project && cfgv.bot.apiKey) {
+    if (cfgv.bot && cfgv.bot.enabled && cfgv.bot.apiUrl && cfgv.bot.dashKey) {
+      try {
+        const r = new Request(cfgv.bot.apiUrl.replace(/\/$/, "") + "/dashboard");
+        r.headers = { Authorization: "Bearer " + cfgv.bot.dashKey };
+        bot = await r.loadJSON();
+        if (r.response.statusCode >= 400) bot = cache && cache.bot;
+      } catch (e) { bot = cache && cache.bot; }
+    } else if (cfgv.bot && cfgv.bot.enabled && cfgv.bot.project && cfgv.bot.apiKey) {
       BOT_BASE = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(cfgv.bot.project)}/databases/(default)/documents`;
       BOT_KEY = cfgv.bot.apiKey;
       try { bot = await loadBot(); } catch (e) { bot = cache && cache.bot; }

@@ -152,11 +152,18 @@
           <section data-sec="coaching" hidden>
             <label class="toggle"><input type="checkbox" name="botOn" /><span><b>Groshkov Padel bot</b><small>Show bookings, prices and locations from the Telegram bot (read‑only)</small></span></label>
             <div class="row2">
-              <label>Firebase project ID<input name="botProject" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="from the bot’s firebase config" /></label>
-              <label>Web API key<input name="botKey" type="password" autocomplete="off" placeholder="apiKey from the same config" /></label>
+              <label>Bot API URL<input name="botApi" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://groshkov-padel-api….workers.dev" /></label>
+              <label>Dashboard key<input name="botDashKey" type="password" autocomplete="off" placeholder="DASHBOARD_KEY of the worker" /></label>
             </div>
+            <details>
+              <summary>Direct database access (only until the bot is secured)</summary>
+              <div class="row2" style="margin-top:10px">
+                <label>Firebase project ID<input name="botProject" autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
+                <label>Web API key<input name="botKey" type="password" autocomplete="off" /></label>
+              </div>
+            </details>
             <div class="sync-card"><span id="botLine" class="sync-line"></span><button type="button" class="btn sm" id="botRefresh">Test &amp; refresh</button></div>
-            <p class="hint">Stored in your private sync, not in the dashboard’s public code. Values are in <code>src/firebase.js</code> of the bot’s repository.</p>
+            <p class="hint">Stored in your private sync, not in the dashboard’s public code. The URL and key come from the bot’s API worker (see SECURITY.md in the bot repository).</p>
             <label class="currency">Currency<input name="currency" maxlength="4" autocomplete="off" /></label>
             <p class="hint">Add players and groups on the <b>Coaching</b> page with <b>+</b>. Past lessons count as done automatically — only mark cancellations.</p>
           </section>

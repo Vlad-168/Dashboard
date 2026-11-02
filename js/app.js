@@ -84,7 +84,7 @@
       schedule: withIds(o.schedule ?? BASE.schedule ?? {}),
       lessons: withIds(o.lessons ?? BASE.lessons ?? {}),
       currency: o.currency ?? BASE.currency ?? "€",
-      bot: { enabled: o.bot?.enabled ?? false, project: o.bot?.project || "", apiKey: o.bot?.apiKey || "" },
+      bot: { enabled: o.bot?.enabled ?? false, apiUrl: o.bot?.apiUrl || "", dashKey: o.bot?.dashKey || "", project: o.bot?.project || "", apiKey: o.bot?.apiKey || "" },
     };
     if (!Array.isArray(cfg.spaces) || !cfg.spaces.length) cfg.spaces = clone(DEFAULT_SPACES);
     if (typeof indexBot === "function") indexBot();
@@ -171,7 +171,7 @@
   function renderBotStatus() {
     const el = $("#botLine"); if (!el) return;
     const n = Object.values(botByDate).flat().length;
-    if (cfg.bot.enabled && (!cfg.bot.project || !cfg.bot.apiKey)) { el.dataset.state = "off"; el.textContent = "Add the project ID and API key below"; return; }
+    if (cfg.bot.enabled && !(cfg.bot.apiUrl && cfg.bot.dashKey) && !(cfg.bot.project && cfg.bot.apiKey)) { el.dataset.state = "off"; el.textContent = "Add the bot API URL and dashboard key below"; return; }
     el.dataset.state = !cfg.bot.enabled ? "off" : botError ? "error" : botData ? "ok" : "syncing";
     el.textContent = !cfg.bot.enabled ? "Not connected" : botError ? `Couldn’t update: ${botError}` : botData
       ? `${n} bookings · updated ${new Date(botData.at).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })}` : "Loading…";
@@ -337,7 +337,7 @@
 
     const lessons = lessonsFor(now), next = lessons.find((l) => lessonStatus(now, l) === "planned");
     if (next) parts.push(`Next lesson: <b>${esc(next.time)} — ${esc(next.client)}</b> (${SPORTS[sportOf(next)][1].toLowerCase()}).`);
-    else if (lessons.length) parts.push("All lessons done for today 🎾");
+    else if (lessons.length && lessons.every((l) => ["done", "cancel"].includes(lessonStatus(now, l)))) parts.push("All lessons done for today 🎾");
 
     const tToday = tourOn(now)[0];
     const tSoon = tournaments().find((t) => t.from > ymd(now) && parseYmd(t.from) - now < 7 * 864e5);
@@ -1142,7 +1142,8 @@
     sForm.ghToken.value = store.get("token", "");
     sForm.syncOn.checked = store.get("syncOn", true);
     sForm.currency.value = cfg.currency;
-    sForm.botOn.checked = cfg.bot.enabled; sForm.botProject.value = cfg.bot.project; sForm.botKey.value = cfg.bot.apiKey; renderBotStatus();
+    sForm.botOn.checked = cfg.bot.enabled; sForm.botApi.value = cfg.bot.apiUrl; sForm.botDashKey.value = cfg.bot.dashKey;
+    sForm.botProject.value = cfg.bot.project; sForm.botKey.value = cfg.bot.apiKey; renderBotStatus();
     sForm.spaces.value = JSON.stringify(cfg.spaces, null, 2);
     sForm.motion.checked = store.get("motion", true);
     $("#motionNote").hidden = !reduced.matches;
@@ -1157,7 +1158,7 @@
     try {
       const spaces = JSON.parse(sForm.spaces.value);
       if (!Array.isArray(spaces) || !spaces.length) throw new Error("keep at least one space");
-      const next = { name: sForm.name.value.trim(), github: { username: normUser(sForm.ghUser.value) }, spaces, currency: sForm.currency.value.trim() || "€", bot: { enabled: sForm.botOn.checked, project: sForm.botProject.value.trim(), apiKey: sForm.botKey.value.trim() } };
+      const next = { name: sForm.name.value.trim(), github: { username: normUser(sForm.ghUser.value) }, spaces, currency: sForm.currency.value.trim() || "€", bot: botForm() };
       const stored = db.get("cfg", null) || {};
       const same = ["name", "github", "spaces", "currency", "bot"].every((k) => JSON.stringify(next[k]) === JSON.stringify(stored[k] ?? null));
       if (!same) saveCfg(next);
@@ -1197,9 +1198,11 @@
       note.innerHTML = `Couldn’t copy automatically — <a href="widget/dashboard-widget.js" target="_blank" rel="noopener">open the script</a>, select all and copy.`;
     }
   };
+  const botForm = () => ({ enabled: sForm.botOn.checked, apiUrl: sForm.botApi.value.trim().replace(/\/$/, ""), dashKey: sForm.botDashKey.value.trim(),
+    project: sForm.botProject.value.trim(), apiKey: sForm.botKey.value.trim() });
   $("#botRefresh").onclick = () => {
     if (!sForm.botOn.checked) return;
-    cfg.bot = { enabled: true, project: sForm.botProject.value.trim(), apiKey: sForm.botKey.value.trim() };
+    cfg.bot = { ...botForm(), enabled: true };
     botError = ""; $("#botLine").textContent = "Loading…"; refreshBot(true);
   };
   $("#translateNow").onclick = () => { sDlg.close(); openTranslateSheet(); };
