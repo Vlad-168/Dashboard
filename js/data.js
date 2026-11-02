@@ -66,7 +66,7 @@
       headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token()}`, ...(opts.body ? { "Content-Type": "application/json" } : {}) },
     });
     if (!r.ok) {
-      const err = new Error(r.status === 401 ? "неверный токен" : r.status === 403 || r.status === 404 ? "у токена нет доступа к Gists" : "GitHub " + r.status);
+      const err = new Error(r.status === 401 ? "invalid token" : r.status === 403 || r.status === 404 ? "the token has no Gists access" : "GitHub " + r.status);
       err.status = r.status;
       throw err;
     }
@@ -84,7 +84,7 @@
     }
     if (!id) {
       const g = await gh("/gists", { method: "POST", body: JSON.stringify({
-        description: "Dashboard sync (не удаляй — здесь тренировки и задачи дашборда)",
+        description: "Dashboard sync (do not delete — holds your dashboard data)",
         public: false,
         files: { [FILE]: { content: JSON.stringify({ version: 1, records: {} }) } },
       }) });
@@ -147,7 +147,7 @@
         store.set("lastSync", this.last);
         this.setStatus("ok");
       } catch (e) {
-        this.setStatus("error", e.message || "нет сети");
+        this.setStatus("error", e.message || "offline");
         if (e.status === 401) window.Dash.onAuthError?.();
       } finally {
         this.busy = false;

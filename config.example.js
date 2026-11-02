@@ -1,35 +1,31 @@
 /*
- * Скопируй этот файл в config.local.js и впиши свои данные.
- * config.local.js не попадает в git (там твой GitHub‑токен).
- * Всё это можно поменять и в самом дашборде (⚙︎ Настройки) — тогда значения
- * сохранятся в браузере и перекроют этот файл.
+ * Defaults for the dashboard. This file is public — keep personal data out of it.
+ * Your name, training, lessons and tournaments are added in the app itself and are
+ * stored only on your devices and in your private sync (a secret GitHub Gist).
+ *
+ * For a local Mac setup you can copy this file to config.local.js (git-ignored).
  */
 window.DASHBOARD_CONFIG = {
-  name: "",            // имя для приветствия — задаётся в ⚙︎ и синхронизируется
-  theme: "damson",            // damson | damson-light | noir | sage | sand | ocean
+  name: "",
+  theme: "damson",          // damson | damson-light | noir | sage | sand | ocean
+  currency: "€",
 
   github: {
-    username: "",          // ник аккаунта, с которого нужны задачи (задаётся в ⚙︎)
-    token: "",                 // fine-grained PAT: Issues + Pull requests (read)
+    username: "",           // the account your GitHub tasks come from
+    token: "",              // only ever in config.local.js, never here
   },
 
-  // Пространства: какие виджеты видны и какие репозитории GitHub относятся к ним.
-  // Виджеты: today, week, stats, github, todo, focus, lessons, lessonsWeek, coachStats, tournaments
+  // Widgets: today, week, stats, github, todo, focus, lessons, lessonsWeek, coachStats, tournaments
   spaces: [
-    { id: "work",  name: "Работа",  icon: "💼", widgets: ["github", "todo", "focus", "today"], repos: [] },
-    { id: "sport", name: "Спорт",   icon: "🏋️", widgets: ["today", "tournaments", "week", "stats", "todo"] },
-    { id: "coach", name: "Коучинг", icon: "🎾", widgets: ["lessons", "lessonsWeek", "tournaments", "coachStats", "todo"] },
-    { id: "life",  name: "Личное",  icon: "🌿", widgets: ["todo", "week", "focus"] },
+    { id: "work",  name: "Work",     icon: "💼", widgets: ["github", "todo", "focus", "today"], repos: [] },
+    { id: "sport", name: "Training", icon: "🏋️", widgets: ["today", "tournaments", "week", "stats", "todo"] },
+    { id: "coach", name: "Coaching", icon: "🎾", widgets: ["lessons", "lessonsWeek", "tournaments", "coachStats", "todo"] },
+    { id: "life",  name: "Personal", icon: "🌿", widgets: ["todo", "week", "focus"] },
   ],
 
-  // Мои тренировки и занятия с учениками задаются в ⚙︎ и хранятся только
-  // на твоих устройствах и в приватной синхронизации — не в этом публичном файле.
-  // Формат (для config.local.js):
-  //   schedule: { mon: [{ time: "07:30", title: "Зал", duration: 60, type: "gym" }], ... }
-  //     type: gym | tennis | padel | cardio | mobility
-  //   lessons:  { mon: [{ time: "16:00", client: "Анна", sport: "padel", duration: 60, place: "Корт 2", price: 50 }], ... }
-  //     sport: tennis | padel;  duration: 60 | 90 | 120
-  currency: "€",
+  // Format (normally edited in the app with +):
+  //   schedule: { mon: [{ time: "07:30", title: "Gym", duration: 60, type: "gym" }] }   type: gym | tennis | padel | cardio | mobility
+  //   lessons:  { mon: [{ time: "16:00", client: "Anna", sport: "padel", duration: 60, place: "Court 2", price: 50 }] }
   schedule: {},
   lessons: {},
 };

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Запускает дашборд как локальный сайт http://localhost:8787 при входе в macOS
-# (через launchd), чтобы Plash/Übersicht/браузер могли его открыть.
+# Runs the dashboard as a local site at http://localhost:8787 on login (launchd)
+
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-8787}"
@@ -27,6 +27,6 @@ PL
 
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
-echo "✓ Дашборд запущен: http://localhost:$PORT"
-echo "  Теперь добавь этот адрес в Plash (см. README)."
+echo "✓ Dashboard running at: http://localhost:$PORT"
+echo "  Now add this URL to Plash (see README)."
 open "http://localhost:$PORT" 2>/dev/null || true

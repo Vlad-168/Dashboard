@@ -1,110 +1,64 @@
-# Dashboard — рабочий стол macOS + iPhone
+# Dashboard — macOS desktop + iPhone
 
-Личный дашборд прямо на рабочем столе: приветствие, часы, расписание тренировок,
-задачи из GitHub, todo и фокус‑таймер. Разные **пространства** (Работа / Спорт / Личное)
-и **6 тем**, основная — **Damson `#854C65`**.
+A private personal dashboard: greeting and clock, training schedule, coaching lessons,
+tournaments, GitHub tasks, to‑dos and a focus timer. Separate **spaces**
+(Work / Training / Coaching / Personal), **6 themes** led by **Damson `#854C65`**,
+and subtle **3D & motion** (card tilt with glare, parallax background, 3D gyroscope,
+count‑ups, confetti) that respects *Reduce Motion*.
 
-## 1. Публикация (один раз)
+## Install
 
-1. GitHub → репозиторий → **Settings → General → Danger Zone → Change visibility → Public**.
-   Секретов в коде нет: токен хранится только на устройствах, `config.local.js` не коммитится.
-2. **Settings → Pages** → Source: *Deploy from a branch* → `master` / `(root)` → Save.
-3. Через минуту дашборд доступен по адресу **https://vlad-168.github.io/Dashboard/**
+### Mac — as your desktop
+1. Install the free **[Plash](https://apps.apple.com/app/plash/id1494023538)** app.
+2. Plash → *Add Website* → your dashboard URL.
+3. Turn on **Browsing Mode** in Plash to click on it (assign a shortcut in Plash settings).
 
-## 2. Mac — на рабочий стол
-
-1. Поставь бесплатное **[Plash](https://apps.apple.com/app/plash/id1494023538)** из App Store.
-2. Plash → *Add Website* → `https://vlad-168.github.io/Dashboard/`.
-3. Чтобы кликать по дашборду — включи в меню Plash **Browsing Mode** (можно на горячую клавишу).
-
-<details><summary>Вариант без интернета: локальный сервер</summary>
+<details><summary>Offline alternative: local server</summary>
 
 ```bash
-git clone https://github.com/vlad-168/dashboard.git ~/Dashboard && cd ~/Dashboard
-./scripts/install-macos.sh     # http://localhost:8787 с автозапуском
+./scripts/install-macos.sh     # http://localhost:8787, starts at login
+./scripts/uninstall-macos.sh   # remove
 ```
-Удалить: `./scripts/uninstall-macos.sh`.
 </details>
 
-## 3. iPhone — как приложение
+### iPhone — as an app
+1. Open the dashboard URL in **Safari**.
+2. Share → **Add to Home Screen**.
+3. Open it from the icon and paste your GitHub token.
 
-1. Открой **https://vlad-168.github.io/Dashboard/** в **Safari**.
-2. Кнопка «Поделиться» → **«На экран Домой»** → Добавить.
-3. Запусти с иконки → ⚙︎ → вставь GitHub‑токен → **Синхронизировать**.
-   Расписание, задачи и отметки подтянутся с Mac.
+## Using it
 
-На телефоне: пространства — в таб‑баре снизу или **свайпом** влево/вправо по карточкам;
-неделя — горизонтальная лента, тап по тренировке отмечает её.
+- **Spaces** — tabs at the top (Mac: keys `1`–`9`) or the bottom bar on iPhone; swipe between them.
+- **Add** training, lessons and tournaments with **+** on their cards. Pick several days at once.
+- **Edit** — tap any session in *Today* or in the week strip: mark it done, change it or delete it.
+- **Coaching** — past lessons count as done automatically, so only mark cancellations.
+  Stats show lessons, hours on court, earnings and forecast, tennis vs padel.
+- **Tournaments** show up in your weeks and greeting. If lessons clash with one, the card warns
+  you and cancels them in one tap.
+- Durations: 1 h / 1.5 h / 2 h (30 min for short training).
 
-## Синхронизация Mac ↔ iPhone
+## Settings (⚙︎ or `,`)
 
-Данные (расписание, пространства, отметки тренировок, todo) хранятся в **приватном
-GitHub Gist** `dashboard-sync.json` — он создаётся автоматически при первой синхронизации.
-Синхронизация идёт при открытии, при возврате в приложение, раз в минуту и через пару
-секунд после любого изменения. Офлайн всё работает и досинхронизируется при появлении сети.
-Тема и токен — свои на каждом устройстве. Зелёная точка на ⚙︎ — всё синхронизировано.
+Sidebar sections: **Profile**, **Appearance** (themes, animations & 3D), **GitHub**, **Sync**,
+**Coaching** (currency), **Spaces** (advanced JSON), **Account** (log out).
 
+### GitHub token
+github.com → Settings → Developer settings → **Fine‑grained tokens**:
+Repository permissions *Issues: Read*, *Pull requests: Read*;
+Account permissions **Gists: Read and write** (needed for sync).
 
-## Приватность
+## Sync & privacy
 
-- Сайт открыт по ссылке, но **без токена показывает только экран входа**: ни имени, ни расписания, ни учеников.
-- Твои данные (расписание, ученики, цены, турниры, задачи) не лежат в репозитории. Они хранятся только
-  на твоих устройствах и в **секретном** Gist, который видит только владелец токена.
-- Поисковики сайт не индексируют (`robots.txt`, `noindex`).
-- ⚙︎ → **Выйти** удаляет все данные дашборда с этого устройства (в синхронизации они остаются).
+- Without a token on the device the site shows **only a lock screen**.
+- Your data (training, players, prices, tournaments, tasks) is never in this repository. It lives
+  on your devices and in a **secret Gist** that only your token can read. Sync runs on open, when
+  you come back to the app, every minute and right after each change; it works offline too.
+- Search engines are blocked (`robots.txt`, `noindex`).
+- For full privacy, host it on Cloudflare Pages behind Cloudflare Access (email one‑time code).
 
-## Коучинг 🎾
-
-Пространство для занятий с учениками (теннис / падел):
-- **Ученики сегодня** — кто, во сколько, где, сколько стоит. Прошедшее занятие засчитывается само,
-  отмечать нужно только **отмены** (✕).
-- **Неделя занятий** — тап по занятию отмечает отмену.
-- **Статистика** — занятия и часы на корте за неделю, заработок и прогноз за месяц, теннис vs падел.
-- Расписание учеников: ⚙︎ → «Коучинг — занятия с учениками». Длительность — 1 ч / 1,5 ч / 2 ч. Валюта настраивается.
-
-## Турниры 🏆
-
-Виджет «Турниры» в пространствах «Спорт» и «Коучинг»: **+ Турнир** → название, даты (по умолчанию
-ближайшие сб–вс), теннис/падел, «Играю сам» или «С учениками».
-Турнир появляется в лентах недели и в приветствии. Если на эти дни стоят занятия с учениками,
-виджет предупредит, и их можно отменить одной кнопкой.
-
-## Настройка
-
-Всё настраивается в самом дашборде — кнопка **⚙︎** (или клавиша `,`):
-имя, тема, GitHub, расписание (визуальный редактор) и пространства (JSON в разделе
-«для продвинутых»). Начальные значения берутся из `config.example.js`.
-
-### GitHub‑токен
-github.com → Settings → Developer settings → **Fine‑grained tokens** →
-Repository permissions: *Issues: Read*, *Pull requests: Read*;
-Account permissions: **Gists: Read and write** (для синхронизации). Без токена работает
-только по публичным репо и с лимитом запросов.
-
-Вкладки виджета: **Мне** (назначенные issues/PR), **Ревью** (ждут твоего ревью), **Мои PR**.
-
-### Пространства
-```js
-{ id: "work", name: "Работа", icon: "💼",
-  widgets: ["github", "todo", "focus", "today"],
-  repos: ["vlad-168/dashboard"] }   // GitHub только по этим репо (пусто = все)
-```
-Виджеты: `today` · `week` · `stats` · `github` · `todo` · `focus` · `lessons` · `lessonsWeek` · `coachStats` · `tournaments`.
-Todo у каждого пространства своё.
-
-### Расписание тренировок
-```js
-mon: [{ time: "07:30", title: "Зал — верх", duration: 60, type: "gym" }]
-```
-`type`: `gym` 🏋️ · `tennis` 🎾 · `padel` 🏓 · `cardio` · `mobility` (цвет и иконка). Длительность: 1 ч / 1,5 ч / 2 ч. Отмеченные тренировки
-считаются в прогрессе: неделя, серия 🔥, месяц.
-
-## Горячие клавиши
-| Клавиша | Действие |
+## Shortcuts (Mac)
+| Key | Action |
 |---|---|
-| `1`…`9` | переключить пространство |
-| `t` | следующая тема |
-| `,` | настройки |
-
-## Темы
-Damson · Damson Light · Noir · Sage · Sand · Ocean — точки справа вверху.
+| `1`…`9` | switch space |
+| `T` | next theme |
+| `,` | settings |

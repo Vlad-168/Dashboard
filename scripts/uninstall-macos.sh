@@ -2,4 +2,4 @@
 PLIST="$HOME/Library/LaunchAgents/com.dashboard.server.plist"
 launchctl unload "$PLIST" 2>/dev/null || true
 rm -f "$PLIST"
-echo "✓ Автозапуск дашборда удалён"
+echo "✓ Dashboard autostart removed"

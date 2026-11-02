@@ -1,5 +1,5 @@
-/* Офлайн‑кэш оболочки приложения. Меняй VERSION при изменении файлов — iPhone подтянет обновление. */
-const VERSION = "dash-v5";
+/* Offline cache for the app shell. Bump VERSION when files change so the iPhone picks up updates. */
+const VERSION = "dash-v6";
 const SHELL = [
   "./", "index.html", "css/styles.css", "js/data.js", "js/app.js", "config.example.js",
   "manifest.webmanifest", "icons/apple-touch-icon.png?v=2", "icons/icon-192.png?v=2", "icons/icon-512.png?v=2", "icons/favicon.png?v=2",
@@ -16,8 +16,8 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// Свои файлы: сначала сеть (чтобы видеть свежую версию), офлайн — из кэша.
-// GitHub API и шрифты не трогаем.
+// Own files: network first (fresh version), cache when offline.
+// GitHub API and fonts are not intercepted.
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.endsWith("config.local.js")) return;
