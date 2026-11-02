@@ -9,13 +9,18 @@
     const o = db.get("cfg", null) || {};
     cfg = {
       name: o.name ?? BASE.name ?? "",
-      github: { username: o.github?.username ?? BASE.github?.username ?? "" },
+      github: { username: normUser(o.github?.username ?? BASE.github?.username ?? "") },
       spaces: o.spaces ?? BASE.spaces ?? [],
       schedule: o.schedule ?? BASE.schedule ?? {},
     };
     if (!cfg.spaces.length) cfg.spaces = [{ id: "main", name: "Главное", icon: "✦", widgets: ["today", "week", "github", "todo"] }];
   }
   loadConfig();
+
+  // Приводим ввод к нику: "@nick", "github.com/nick", "https://github.com/nick/" → "nick"
+  function normUser(v) {
+    return String(v || "").trim().replace(/^https?:\/\//i, "").replace(/^(www\.)?github\.com\//i, "").replace(/^@/, "").split(/[/?#\s]/)[0];
+  }
 
   const THEMES = [
     { id: "damson", name: "Damson", a: "#854c65", b: "#24131c", bar: "#1d0f17" },
@@ -258,9 +263,10 @@
 
   /* GitHub */
   const GH_TABS = [
-    { id: "assigned", label: "Мне", q: (u) => `is:open assignee:${u} archived:false` },
-    { id: "review", label: "Ревью", q: (u) => `is:open is:pr review-requested:${u} archived:false` },
-    { id: "mine", label: "Мои PR", q: (u) => `is:open is:pr author:${u} archived:false` },
+    // GitHub требует в каждом запросе is:issue или is:pr, поэтому «Мне» — это два запроса
+    { id: "assigned", label: "Мне", q: (u) => [`is:open is:issue assignee:${u} archived:false`, `is:open is:pr assignee:${u} archived:false`] },
+    { id: "review", label: "Ревью", q: (u) => [`is:open is:pr review-requested:${u} archived:false`] },
+    { id: "mine", label: "Мои PR", q: (u) => [`is:open is:pr author:${u} archived:false`] },
   ];
   const ghCache = new Map();
   let ghTab = store.get("ghTab", "assigned");
@@ -271,7 +277,20 @@
     const headers = { Accept: "application/vnd.github+json" };
     if (token()) headers.Authorization = `Bearer ${token()}`;
     const r = await fetch(`https://api.github.com/search/issues?per_page=30&sort=updated&q=${encodeURIComponent(query)}`, { headers });
-    if (!r.ok) throw new Error(r.status === 401 ? "Неверный токен" : r.status === 403 ? "Лимит запросов GitHub — добавь токен" : "GitHub: " + r.status);
+    if (!r.ok) {
+      let detail = "";
+      let msg = "";
+      try { const b = await r.json(); msg = b.message || ""; detail = (b.errors || []).map((e) => e.message).join(" ") || msg; } catch {}
+      if (r.status === 401) throw new Error("Токен не подходит — проверь, что он скопирован целиком и не истёк");
+      if (r.status === 403) throw new Error("Лимит запросов GitHub — добавь токен");
+      if (r.status === 422 && !/validation failed/i.test(msg)) throw new Error("GitHub: " + (detail || msg));
+      if (r.status === 422) {
+        const repos = (query.match(/repo:\S+/g) || []).map((x) => x.slice(5));
+        throw new Error(`GitHub не нашёл ${repos.length ? `пользователя «${cfg.github.username}» или репозитории: ${repos.join(", ")}` : `пользователя «${cfg.github.username}»`}. ` +
+          "Проверь Username (ник, а не имя или email) и список repos в пространстве");
+      }
+      throw new Error(`GitHub ${r.status}${detail ? ": " + detail : ""}`);
+    }
     const data = await r.json();
     ghCache.set(query, { t: Date.now(), data });
     return data;
@@ -291,7 +310,11 @@
 
     const repos = (space.repos || []).map((r) => ` repo:${r}`).join("");
     const tab = GH_TABS.find((t) => t.id === ghTab) || GH_TABS[0];
-    ghFetch(tab.q(user) + repos).then((data) => {
+    Promise.all(tab.q(user).map((q) => ghFetch(q + repos))).then((parts) => {
+      const data = {
+        total_count: parts.reduce((n, p) => n + p.total_count, 0),
+        items: parts.flatMap((p) => p.items).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 30),
+      };
       if (tab.id === "assigned") { ghCount = data.total_count; renderHeader(); }
       if (!data.items.length) { list.innerHTML = `<li class="empty">Пусто — можно выдохнуть ✨</li>`; return; }
       list.innerHTML = data.items.map((it) => {
@@ -465,7 +488,7 @@
       if (!Array.isArray(spaces) || !spaces.length) throw new Error("нужно хотя бы одно пространство");
       const schedule = readScheduleEditor();
       for (const k of WEEK) schedule[k] = schedule[k].filter((w) => w.title);
-      const next = { name: form.name.value.trim(), github: { username: form.ghUser.value.trim() }, spaces, schedule };
+      const next = { name: form.name.value.trim(), github: { username: normUser(form.ghUser.value) }, spaces, schedule };
       if (JSON.stringify(next) !== JSON.stringify(db.get("cfg", null))) db.set("cfg", next);
 
       const tok = form.ghToken.value.trim();

@@ -1,5 +1,5 @@
 /* Офлайн‑кэш оболочки приложения. Меняй VERSION при изменении файлов — iPhone подтянет обновление. */
-const VERSION = "dash-v2";
+const VERSION = "dash-v3";
 const SHELL = [
   "./", "index.html", "css/styles.css", "js/data.js", "js/app.js", "config.example.js",
   "manifest.webmanifest", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png",
