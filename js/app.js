@@ -12,10 +12,30 @@
       github: { username: normUser(o.github?.username ?? BASE.github?.username ?? "") },
       spaces: o.spaces ?? BASE.spaces ?? [],
       schedule: o.schedule ?? BASE.schedule ?? {},
+      lessons: o.lessons ?? BASE.lessons ?? {},
+      currency: o.currency ?? BASE.currency ?? "€",
+      v: o.v ?? 3,
     };
     if (!cfg.spaces.length) cfg.spaces = [{ id: "main", name: "Главное", icon: "✦", widgets: ["today", "week", "github", "todo"] }];
   }
   loadConfig();
+
+  // Миграция v1 → v2: добавляем пространство «Коучинг» тем, у кого настройки уже сохранены
+  // Миграции для тех, у кого настройки уже сохранены: v2 — пространство «Коучинг», v3 — виджет «Турниры»
+  function migrateConfig() {
+    const o = db.get("cfg", null);
+    const v = o?.v ?? 1;
+    if (!o || v >= CFG_VERSION) return;
+    let spaces = (o.spaces || cfg.spaces).map((sp) => ({ ...sp, widgets: [...(sp.widgets || [])] }));
+    if (v < 2 && !spaces.some((sp) => sp.id === "coach")) spaces.push({ ...COACH_SPACE, widgets: [...COACH_SPACE.widgets] });
+    if (v < 3) for (const sp of spaces) {
+      if ((sp.id === "coach" || sp.id === "sport") && !sp.widgets.includes("tournaments")) sp.widgets.splice(sp.id === "coach" ? 2 : 1, 0, "tournaments");
+    }
+    db.set("cfg", { ...o, spaces, v: CFG_VERSION });
+    loadConfig();
+  }
+  const CFG_VERSION = 3;
+  const COACH_SPACE = { id: "coach", name: "Коучинг", icon: "🎾", widgets: ["lessons", "lessonsWeek", "tournaments", "coachStats", "todo"] };
 
   // Приводим ввод к нику: "@nick", "github.com/nick", "https://github.com/nick/" → "nick"
   function normUser(v) {
@@ -37,7 +57,11 @@
   const WEEK = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
   const DAY_SHORT = { mon: "Пн", tue: "Вт", wed: "Ср", thu: "Чт", fri: "Пт", sat: "Сб", sun: "Вс" };
   const DAY_FULL = { mon: "Понедельник", tue: "Вторник", wed: "Среда", thu: "Четверг", fri: "Пятница", sat: "Суббота", sun: "Воскресенье" };
-  const TYPES = { strength: ["🏋️", "Силовая"], cardio: ["🏃", "Кардио"], mobility: ["🧘", "Мобильность"], swim: ["🏊", "Плавание"], bike: ["🚴", "Велосипед"] };
+  const TYPES = { gym: ["🏋️", "Зал"], tennis: ["🎾", "Теннис"], padel: ["🏓", "Падел"], cardio: ["🏃", "Кардио"], mobility: ["🧘", "Растяжка"] };
+  const LEGACY_TYPES = { strength: "gym", swim: "cardio", bike: "cardio" };
+  const typeOf = (w) => (TYPES[w.type] ? w.type : LEGACY_TYPES[w.type] || "gym");
+  const SPORTS = { tennis: ["🎾", "Теннис"], padel: ["🏓", "Падел"] };
+  const sportOf = (l) => (SPORTS[l.sport] ? l.sport : "tennis");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -67,6 +91,63 @@
     haptic();
     renderAll();
   }
+
+  /* Занятия с учениками. Прошедшее занятие считается проведённым само,
+     вручную отмечаются только отмены: db["lesson:2026-11-02"] = { "0": "cancel", "1": "done" } */
+  const lessonsFor = (d) => (cfg.lessons[DAY_KEYS[d.getDay()]] || []).slice().sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  const lessonMarks = (d) => db.get("lesson:" + ymd(d), {});
+  function lessonEnd(d, l) {
+    const [h, m] = (l.time || "23:59").split(":").map(Number);
+    const x = new Date(d); x.setHours(h || 0, (m || 0) + (+l.duration || 60), 0, 0);
+    return x;
+  }
+  function lessonStatus(d, i, l) {
+    const mark = lessonMarks(d)[i];
+    if (mark) return mark;
+    return Date.now() >= lessonEnd(d, l) ? "done" : "planned";
+  }
+  function setLessonMark(d, i, val) {
+    const marks = { ...lessonMarks(d) };
+    if (marks[i] === val) delete marks[i]; else marks[i] = val;
+    db.set("lesson:" + ymd(d), marks);
+    haptic();
+    renderAll();
+  }
+  // Длительность: выбор из 1 ч / 1,5 ч / 2 ч (+ короткие для тренировок)
+  const fmtDur = (min) => { min = +min || 0; if (!min) return ""; if (min < 60) return min + " мин"; return (min / 60).toLocaleString("ru-RU") + " ч"; };
+  function durSelect(value, options) {
+    const v = +value || options[0];
+    const opts = options.includes(v) ? options : [...options, v].sort((a, b) => a - b);
+    return `<select name="duration" aria-label="Длительность">${opts.map((m) => `<option value="${m}" ${m === v ? "selected" : ""}>${fmtDur(m)}</option>`).join("")}</select>`;
+  }
+  /* Турниры — разовые события с датами: db["tournaments"] = [{ id, from, to, title, sport, role, place }] */
+  const ROLES = { play: "Играю сам", coach: "С учениками" };
+  const tournaments = () => db.get("tournaments", []).slice().sort((a, b) => a.from.localeCompare(b.from));
+  const tourOn = (d) => { const k = ymd(d); return tournaments().filter((t) => t.from <= k && k <= (t.to || t.from)); };
+  const parseYmd = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+  function tourRange(t) {
+    const a = parseYmd(t.from), b = parseYmd(t.to || t.from);
+    const f = (d, o) => d.toLocaleDateString("ru-RU", o);
+    if (t.from === (t.to || t.from)) return f(a, { weekday: "short", day: "numeric", month: "short" });
+    return `${f(a, { weekday: "short", day: "numeric" })} – ${f(b, { weekday: "short", day: "numeric", month: "short" })}`;
+  }
+  function tourWhen(t) {
+    const today = parseYmd(ymd(new Date()));
+    const days = Math.round((parseYmd(t.from) - today) / 864e5);
+    if (days <= 0) return "идёт сейчас";
+    if (days === 1) return "завтра";
+    return `через ${days} ${plural(days, "день", "дня", "дней")}`;
+  }
+  // Занятия с учениками, которые попадают на дни турнира
+  function tourConflicts(t) {
+    const out = [];
+    for (let d = parseYmd(t.from); d <= parseYmd(t.to || t.from); d = addDays(d, 1)) {
+      lessonsFor(d).forEach((l, i) => { if (lessonStatus(d, i, l) !== "cancel") out.push({ d: new Date(d), i, l }); });
+    }
+    return out;
+  }
+  const money = (n) => `${Math.round(n).toLocaleString("ru-RU")}\u00a0${esc(cfg.currency)}`;
+  const hours = (min) => { const h = min / 60; return (Math.round(h * 10) / 10).toLocaleString("ru-RU"); };
 
   /* ───────────── Theme ───────────── */
   function applyTheme(id) {
@@ -105,6 +186,14 @@
     if (!today.length) parts.push("Сегодня день отдыха — восстановись как следует.");
     else if (!left.length) parts.push("Тренировки на сегодня выполнены. Отличная работа 💪");
     else parts.push(`Сегодня: ${esc(left[0].title)} в ${esc(left[0].time)}.`);
+    const lessons = lessonsFor(now);
+    const next = lessons.map((l, i) => ({ l, st: lessonStatus(now, i, l) })).find((x) => x.st === "planned");
+    if (next) parts.push(`Следующее занятие: ${esc(next.l.time)} — ${esc(next.l.client)} (${SPORTS[sportOf(next.l)][1].toLowerCase()}).`);
+    else if (lessons.length) parts.push("Занятия с учениками на сегодня закончены 🎾");
+    const tToday = tourOn(now)[0];
+    const tSoon = tournaments().find((t) => t.from > ymd(now) && parseYmd(t.from) - now < 7 * 864e5);
+    if (tToday) parts.push(`🏆 Сегодня турнир: ${esc(tToday.title)}.`);
+    else if (tSoon) parts.push(`🏆 ${tourWhen(tSoon)[0].toUpperCase() + tourWhen(tSoon).slice(1)} — ${esc(tSoon.title)}.`);
     if (ghCount === 0) parts.push("В GitHub всё чисто ✨");
     else if (ghCount != null) parts.push(`В GitHub ждут ${ghCount} ${plural(ghCount, "задача", "задачи", "задач")}.`);
     $("#subline").innerHTML = parts.join(" ");
@@ -173,6 +262,10 @@
     todo: { size: "", render: wTodo },
     stats: { size: "", render: wStats },
     focus: { size: "", render: wFocus },
+    lessons: { size: "", render: wLessons },
+    lessonsWeek: { size: "wide", render: wLessonsWeek },
+    coachStats: { size: "", render: wCoachStats },
+    tournaments: { size: "", render: wTournaments },
   };
 
   function card(title, size, body, extra = "") {
@@ -189,7 +282,7 @@
     const first = list[0];
     const body = list.length
       ? `<div class="today-main">
-           <div class="ring" style="--p:${pct}"><span>${TYPES[first.type]?.[0] || "⚡"}</span></div>
+           <div class="ring" style="--p:${pct}"><span>${TYPES[typeOf(first)][0]}</span></div>
            <div><div class="big-title">${esc(list.length === 1 ? first.title : list.length + " " + plural(list.length, "тренировка", "тренировки", "тренировок"))}</div>
            <div class="wo-meta">${doneN}/${list.length} выполнено</div></div>
          </div>
@@ -197,7 +290,7 @@
            <li class="wo ${isDone(now, i) ? "done" : ""}">
              <button class="check ${isDone(now, i) ? "on" : ""}" data-i="${i}" aria-label="Отметить «${esc(w.title)}»">✓</button>
              <span class="wo-time">${esc(w.time || "")}</span>
-             <span class="wo-title">${esc(w.title)}<div class="wo-meta">${w.duration ? w.duration + " мин" : ""}</div></span>
+             <span class="wo-title">${esc(w.title)}<div class="wo-meta">${TYPES[typeOf(w)][1]}${w.duration ? " · " + fmtDur(w.duration) : ""}</div></span>
            </li>`).join("")}</ul>`
       : `<div class="today-main"><div class="ring" style="--p:100"><span>☕</span></div>
            <div><div class="big-title">День отдыха</div><div class="wo-meta">Сон, прогулка, растяжка</div></div></div>`;
@@ -210,11 +303,12 @@
     const now = new Date(), mon = mondayOf(now);
     const days = WEEK.map((k, idx) => {
       const d = addDays(mon, idx), list = workoutsFor(d), isToday = ymd(d) === ymd(now);
-      return `<div class="day ${isToday ? "is-today" : ""}" data-date="${ymd(d)}">
+      return `<div class="day ${isToday ? "is-today" : ""} ${tourOn(d).length ? "has-tour" : ""}" data-date="${ymd(d)}">
         <div class="day-name"><span>${DAY_SHORT[k]}</span><span>${d.getDate()}</span></div>
-        ${list.length ? list.map((w, i) => `<button class="pill t-${esc(w.type || "")} ${isDone(d, i) ? "done" : ""}" data-i="${i}" title="${esc(w.title)} — нажми, чтобы отметить">
-            ${esc(w.title)}<small>${esc(w.time || "")}${w.duration ? " · " + w.duration + "м" : ""}</small></button>`).join("")
-          : `<div class="rest">отдых</div>`}
+        ${tourOn(d).map((t) => `<div class="pill t-tour" title="${esc(t.title)}">🏆 ${esc(t.title)}<small>${ROLES[t.role] || ""}</small></div>`).join("")}
+        ${list.length ? list.map((w, i) => `<button class="pill t-${typeOf(w)} ${isDone(d, i) ? "done" : ""}" data-i="${i}" title="${esc(w.title)} — нажми, чтобы отметить">
+            ${esc(w.title)}<small>${esc(w.time || "")}${w.duration ? " · " + fmtDur(w.duration) : ""}</small></button>`).join("")
+          : tourOn(d).length ? "" : `<div class="rest">отдых</div>`}
       </div>`;
     }).join("");
     const range = `${mon.getDate()} – ${addDays(mon, 6).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}`;
@@ -259,6 +353,158 @@
       <div class="bars">${bars.map((b) => `<i class="${b.on ? "on" : ""}" style="height:${b.h}%"></i>`).join("")}</div>
       <div class="bars-lbl">${bars.map((b) => `<span>${DAY_SHORT[b.k]}</span>`).join("")}</div>`;
     return card("Прогресс", size, body);
+  }
+
+  /* ───────── Коучинг ───────── */
+  function wLessons(size) {
+    const now = new Date(), list = lessonsFor(now);
+    const rows = list.map((l, i) => ({ l, i, st: lessonStatus(now, i, l) }));
+    const activeRows = rows.filter((r) => r.st !== "cancel");
+    const totalMin = activeRows.reduce((s, r) => s + (+r.l.duration || 0), 0);
+    const body = list.length
+      ? `<ul class="lessons">${rows.map(({ l, i, st }) => {
+          const [ico, label] = SPORTS[sportOf(l)];
+          return `<li class="lesson s-${st}">
+            <span class="wo-time">${esc(l.time || "")}</span>
+            <span class="lesson-main"><b>${esc(l.client)}</b>
+              <span class="wo-meta"><span class="sport ${sportOf(l)}">${ico} ${label}</span>${l.duration ? " · " + fmtDur(l.duration) : ""}${l.place ? " · " + esc(l.place) : ""}${+l.price ? " · " + money(l.price) : ""}</span></span>
+            <span class="lesson-act">
+              <button class="check ${st === "done" ? "on" : ""}" data-done="${i}" title="Проведено" aria-label="Проведено">✓</button>
+              <button class="check cancel ${st === "cancel" ? "on" : ""}" data-cancel="${i}" title="Отменено" aria-label="Отменено">✕</button>
+            </span></li>`;
+        }).join("")}</ul>`
+      : `<div class="today-main"><div class="ring" style="--p:100"><span>🌴</span></div>
+           <div><div class="big-title">Сегодня без учеников</div><div class="wo-meta">Время на свою игру или отдых</div></div></div>`;
+    const chip = list.length ? `<span class="chip accent">${activeRows.length} ${plural(activeRows.length, "занятие", "занятия", "занятий")} · ${hours(totalMin)} ч</span>` : "";
+    const el = card("Ученики сегодня", size, body, chip);
+    el.onclick = (e) => {
+      const d = e.target.closest("[data-done]"), c = e.target.closest("[data-cancel]");
+      if (d) setLessonMark(now, +d.dataset.done, "done");
+      if (c) setLessonMark(now, +c.dataset.cancel, "cancel");
+    };
+    return el;
+  }
+
+  function wLessonsWeek(size) {
+    const now = new Date(), mon = mondayOf(now);
+    const days = WEEK.map((k, idx) => {
+      const d = addDays(mon, idx), list = lessonsFor(d), isToday = ymd(d) === ymd(now);
+      return `<div class="day ${isToday ? "is-today" : ""} ${tourOn(d).length ? "has-tour" : ""}" data-date="${ymd(d)}">
+        <div class="day-name"><span>${DAY_SHORT[k]}</span><span>${d.getDate()}</span></div>
+        ${tourOn(d).map((t) => `<div class="pill t-tour" title="${esc(t.title)}">🏆 ${esc(t.title)}<small>${ROLES[t.role] || ""}</small></div>`).join("")}
+        ${list.length ? list.map((l, i) => {
+          const st = lessonStatus(d, i, l);
+          return `<button class="pill t-${sportOf(l)} ${st === "cancel" ? "cancelled" : st === "done" ? "past" : ""}" data-i="${i}" title="${esc(l.client)} — нажми, чтобы отметить отмену">
+            ${SPORTS[sportOf(l)][0]} ${esc(l.client)}<small>${esc(l.time || "")}${l.duration ? " · " + fmtDur(l.duration) : ""}</small></button>`;
+        }).join("") : tourOn(d).length ? "" : `<div class="rest">свободно</div>`}
+      </div>`;
+    }).join("");
+    const el = card("Неделя занятий", size, `<div class="week">${days}</div>`, `<span class="chip">тап — отмена</span>`);
+    el.onclick = (e) => {
+      const p = e.target.closest(".pill"); if (!p) return;
+      const [y, m, d] = p.closest(".day").dataset.date.split("-").map(Number);
+      setLessonMark(new Date(y, m - 1, d), +p.dataset.i, "cancel");
+    };
+    requestAnimationFrame(() => {
+      const w = $(".week", el), t = $(".is-today", el);
+      if (w && t && w.scrollWidth > w.clientWidth) w.scrollLeft = t.offsetLeft - (w.clientWidth - t.clientWidth) / 2;
+    });
+    return el;
+  }
+
+  function wCoachStats(size) {
+    const now = new Date(), mon = mondayOf(now);
+    const sum = (from, to) => {
+      const r = { done: 0, planned: 0, min: 0, earned: 0, forecast: 0, tennis: 0, padel: 0 };
+      for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
+        lessonsFor(d).forEach((l, i) => {
+          const st = lessonStatus(d, i, l);
+          if (st === "cancel") return;
+          r.planned++; r.forecast += +l.price || 0;
+          if (st === "done") { r.done++; r.min += +l.duration || 0; r.earned += +l.price || 0; r[sportOf(l)]++; }
+        });
+      }
+      return r;
+    };
+    const week = sum(mon, addDays(mon, 6));
+    const month = sum(new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    const both = month.tennis + month.padel;
+    const tp = both ? Math.round((month.tennis / both) * 100) : 50;
+    const body = `<div class="stats">
+        <div class="stat"><b>${week.done}/${week.planned}</b><span>занятий за неделю</span></div>
+        <div class="stat"><b>${hours(week.min)}</b><span>часов на корте</span></div>
+        <div class="stat"><b>${month.done}</b><span>за месяц</span></div>
+      </div>
+      <div class="earn">
+        <div><span class="muted">Заработано в этом месяце</span><b>${money(month.earned)}</b></div>
+        <div class="right"><span class="muted">Прогноз</span><b class="soft">${money(month.forecast)}</b></div>
+      </div>
+      <div class="split" style="--tp:${tp}%"><i></i></div>
+      <div class="split-lbl"><span>🎾 Теннис · ${month.tennis}</span><span>${month.padel} · Падел 🏓</span></div>`;
+    return card("Коучинг · статистика", size, body);
+  }
+
+  /* ───────── Турниры ───────── */
+  let tourFormOpen = false;
+  function wTournaments(size) {
+    const todayK = ymd(new Date());
+    const upcoming = tournaments().filter((t) => (t.to || t.from) >= todayK);
+    const past = tournaments().length - upcoming.length;
+    const next = (() => { const d = new Date(); const sat = addDays(d, (6 - d.getDay() + 7) % 7 || 7); return [ymd(sat), ymd(addDays(sat, 1))]; })();
+    const list = upcoming.map((t) => {
+      const conf = tourConflicts(t);
+      return `<li class="tour t-${t.sport === "padel" ? "padel" : "tennis"}">
+        <div class="tour-head">
+          <span class="tour-date">${tourRange(t)}</span>
+          <span class="chip ${t.from <= todayK ? "accent" : ""}">${tourWhen(t)}</span>
+        </div>
+        <b>🏆 ${esc(t.title)}</b>
+        <span class="wo-meta">${SPORTS[t.sport]?.[0] || "🎾"} ${SPORTS[t.sport]?.[1] || ""} · ${ROLES[t.role] || ""}${t.place ? " · " + esc(t.place) : ""}</span>
+        ${conf.length ? `<div class="tour-warn">⚠️ На эти дни ${conf.length} ${plural(conf.length, "занятие", "занятия", "занятий")} с учениками: ${conf.map((c) => esc(c.l.client)).join(", ")}
+            <button type="button" class="link" data-cancel-lessons="${esc(t.id)}">Отменить их</button></div>` : ""}
+        <button type="button" class="del" data-del-tour="${esc(t.id)}" aria-label="Удалить турнир">✕</button>
+      </li>`;
+    }).join("");
+    const form = `<form class="tour-form" ${tourFormOpen ? "" : "hidden"}>
+        <input name="title" placeholder="Название турнира" required maxlength="80" />
+        <div class="tour-row">
+          <label>С<input type="date" name="from" value="${next[0]}" required /></label>
+          <label>По<input type="date" name="to" value="${next[1]}" /></label>
+        </div>
+        <div class="tour-row">
+          <select name="sport">${Object.entries(SPORTS).map(([id, [ico, label]]) => `<option value="${id}">${ico} ${label}</option>`).join("")}</select>
+          <select name="role">${Object.entries(ROLES).map(([id, label]) => `<option value="${id}">${label}</option>`).join("")}</select>
+        </div>
+        <input name="place" placeholder="Клуб / город (необязательно)" maxlength="80" />
+        <div class="tour-row end"><button type="button" class="ghost" data-tour-cancel>Отмена</button><button class="primary">Добавить</button></div>
+      </form>`;
+    const body = `${form}
+      ${upcoming.length ? `<ul class="tours">${list}</ul>` : tourFormOpen ? "" : `<p class="empty">Турниров не запланировано. Добавь ближайший — он появится в неделе и в приветствии.</p>`}
+      ${past ? `<p class="hint">Прошедших турниров: ${past}</p>` : ""}`;
+    const el = card("Турниры", size, body, tourFormOpen ? "" : `<button class="btn sm" data-tour-add>+ Турнир</button>`);
+    const f = $(".tour-form", el);
+    f.from.addEventListener("change", () => { if (!f.to.value || f.to.value < f.from.value) f.to.value = f.from.value; });
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      const t = { id: Date.now().toString(36), title: f.title.value.trim(), from: f.from.value, to: f.to.value && f.to.value >= f.from.value ? f.to.value : f.from.value,
+        sport: f.sport.value, role: f.role.value, place: f.place.value.trim() };
+      if (!t.title || !t.from) return;
+      db.set("tournaments", [...db.get("tournaments", []), t]);
+      tourFormOpen = false; haptic(); renderAll();
+    };
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("[data-tour-add]")) { tourFormOpen = true; const n = wTournaments(size); el.replaceWith(n); $("input", n).focus(); }
+      if (e.target.closest("[data-tour-cancel]")) { tourFormOpen = false; el.replaceWith(wTournaments(size)); }
+      const del = e.target.closest("[data-del-tour]");
+      if (del && confirm("Удалить турнир?")) { db.set("tournaments", db.get("tournaments", []).filter((t) => t.id !== del.dataset.delTour)); renderAll(); }
+      const cl = e.target.closest("[data-cancel-lessons]");
+      if (cl) {
+        const t = tournaments().find((x) => x.id === cl.dataset.cancelLessons);
+        for (const c of tourConflicts(t)) db.set("lesson:" + ymd(c.d), { ...lessonMarks(c.d), [c.i]: "cancel" });
+        haptic(); renderAll();
+      }
+    });
+    return el;
   }
 
   /* GitHub */
@@ -423,10 +669,12 @@
   /* Пришли изменения с другого устройства */
   db.onRemoteChange(() => {
     const typing = document.activeElement?.matches("input, textarea");
-    loadConfig();
+    loadConfig(); migrateConfig();
     renderSpaces(); renderHeader();
     if (!typing) renderGrid();
   });
+
+  const cfgForSave = () => ({ name: cfg.name, github: cfg.github, spaces: cfg.spaces, schedule: cfg.schedule, lessons: cfg.lessons, currency: cfg.currency, v: CFG_VERSION });
 
   /* ───────────── Settings ───────────── */
   const dlg = $("#settings"), form = $("#settingsForm");
@@ -438,10 +686,10 @@
         <header><b>${DAY_FULL[k]}</b><button type="button" class="link" data-add="${k}">+ тренировка</button></header>
         ${(draft[k] || []).map((w, i) => `
           <div class="sr" data-i="${i}">
-            <input type="time" name="time" value="${esc(w.time || "")}" aria-label="Время" />
+            <input type="time" name="time" step="1800" value="${esc(w.time || "")}" aria-label="Время" />
             <input name="title" value="${esc(w.title || "")}" placeholder="Название" aria-label="Название" />
-            <input type="number" name="duration" value="${esc(w.duration ?? "")}" min="0" step="5" inputmode="numeric" placeholder="мин" aria-label="Минут" />
-            <select name="type" aria-label="Тип">${Object.entries(TYPES).map(([id, [ico, label]]) => `<option value="${id}" ${w.type === id ? "selected" : ""}>${ico} ${label}</option>`).join("")}</select>
+            ${durSelect(w.duration, [30, 60, 90, 120])}
+            <select name="type" aria-label="Тип">${Object.entries(TYPES).map(([id, [ico, label]]) => `<option value="${id}" ${typeOf(w) === id ? "selected" : ""}>${ico} ${label}</option>`).join("")}</select>
             <button type="button" class="icon-btn sm" data-rm="${k}:${i}" aria-label="Удалить">✕</button>
           </div>`).join("") || `<p class="rest">отдых</p>`}
       </section>`).join("");
@@ -463,10 +711,56 @@
     const add = e.target.closest("[data-add]"), rm = e.target.closest("[data-rm]");
     if (!add && !rm) return;
     draft = readScheduleEditor();
-    if (add) (draft[add.dataset.add] ||= []).push({ time: "07:30", title: "", duration: 45, type: "strength" });
+    if (add) (draft[add.dataset.add] ||= []).push({ time: "07:30", title: "", duration: 60, type: "gym" });
     if (rm) { const [k, i] = rm.dataset.rm.split(":"); draft[k].splice(+i, 1); }
     renderScheduleEditor();
-    if (add) $(`.sd[data-day="${add.dataset.add}"] .sr:last-of-type [name="title"]`)?.focus();
+    if (add) $(`#schedEditor .sd[data-day="${add.dataset.add}"] .sr:last-of-type [name="title"]`)?.focus();
+  });
+
+  /* Редактор занятий с учениками */
+  let draftL = {};
+  function lessonEditorHTML() {
+    return WEEK.map((k) => `
+      <section class="sd" data-day="${k}">
+        <header><b>${DAY_FULL[k]}</b><button type="button" class="link" data-add="${k}">+ ученик</button></header>
+        ${(draftL[k] || []).map((l, i) => `
+          <div class="sr lesson-row" data-i="${i}">
+            <input type="time" name="time" step="1800" value="${esc(l.time || "")}" aria-label="Время" />
+            <input name="client" value="${esc(l.client || "")}" placeholder="Ученик или группа" aria-label="Ученик" />
+            <select name="sport" aria-label="Вид">${Object.entries(SPORTS).map(([id, [ico, label]]) => `<option value="${id}" ${sportOf(l) === id ? "selected" : ""}>${ico} ${label}</option>`).join("")}</select>
+            ${durSelect(l.duration, [60, 90, 120])}
+            <input name="place" value="${esc(l.place || "")}" placeholder="Корт / клуб" aria-label="Место" />
+            <input type="number" name="price" value="${esc(l.price || "")}" min="0" inputmode="decimal" placeholder="цена" aria-label="Цена" />
+            <button type="button" class="icon-btn sm" data-rm="${k}:${i}" aria-label="Удалить">✕</button>
+          </div>`).join("") || `<p class="rest">свободно</p>`}
+      </section>`).join("");
+  }
+  function readLessonEditor() {
+    const out = {};
+    document.querySelectorAll("#lessonEditor .sd").forEach((sec) => {
+      out[sec.dataset.day] = [...sec.querySelectorAll(".sr")].map((r) => ({
+        time: r.querySelector('[name="time"]').value,
+        client: r.querySelector('[name="client"]').value.trim(),
+        sport: r.querySelector('[name="sport"]').value,
+        duration: +r.querySelector('[name="duration"]').value || 0,
+        place: r.querySelector('[name="place"]').value.trim(),
+        price: +r.querySelector('[name="price"]').value || 0,
+      }));
+    });
+    return out;
+  }
+  function renderLessonEditor() { $("#lessonEditor").innerHTML = lessonEditorHTML(); }
+  $("#lessonEditor").addEventListener("click", (e) => {
+    const add = e.target.closest("[data-add]"), rm = e.target.closest("[data-rm]");
+    if (!add && !rm) return;
+    draftL = readLessonEditor();
+    if (add) {
+      const prev = (draftL[add.dataset.add] || []).at(-1);
+      (draftL[add.dataset.add] ||= []).push({ time: "10:00", client: "", sport: prev?.sport || "padel", duration: 60, place: prev?.place || "", price: prev?.price || 0 });
+    }
+    if (rm) { const [k, i] = rm.dataset.rm.split(":"); draftL[k].splice(+i, 1); }
+    renderLessonEditor();
+    if (add) $(`#lessonEditor .sd[data-day="${add.dataset.add}"] .sr:last-of-type [name="client"]`)?.focus();
   });
 
   function openSettings() {
@@ -477,6 +771,9 @@
     form.spaces.value = JSON.stringify(cfg.spaces, null, 2);
     draft = JSON.parse(JSON.stringify(cfg.schedule));
     renderScheduleEditor();
+    draftL = JSON.parse(JSON.stringify(cfg.lessons));
+    renderLessonEditor();
+    form.currency.value = cfg.currency;
     renderSyncStatus();
     $("#settingsErr").textContent = "";
     dlg.showModal();
@@ -488,7 +785,10 @@
       if (!Array.isArray(spaces) || !spaces.length) throw new Error("нужно хотя бы одно пространство");
       const schedule = readScheduleEditor();
       for (const k of WEEK) schedule[k] = schedule[k].filter((w) => w.title);
-      const next = { name: form.name.value.trim(), github: { username: normUser(form.ghUser.value) }, spaces, schedule };
+      const lessons = readLessonEditor();
+      for (const k of WEEK) lessons[k] = lessons[k].filter((l) => l.client);
+      const next = { name: form.name.value.trim(), github: { username: normUser(form.ghUser.value) }, spaces, schedule,
+        lessons, currency: form.currency.value.trim() || "€", v: CFG_VERSION };
       if (JSON.stringify(next) !== JSON.stringify(db.get("cfg", null))) db.set("cfg", next);
 
       const tok = form.ghToken.value.trim();
@@ -525,8 +825,51 @@
     }
   });
 
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
+  /* ───────────── Lock: без токена на устройстве ничего не показываем ───────────── */
+  function showLock(message = "") {
+    document.body.classList.add("locked");
+    $("#lock").hidden = false;
+    $("#lockErr").textContent = message;
+    setTimeout(() => $("#lockToken").focus(), 50);
+  }
+  $("#lockForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const tok = $("#lockToken").value.trim(), btn = $("#lockForm button");
+    if (!tok) return;
+    btn.disabled = true; $("#lockErr").textContent = "Проверяю…";
+    try {
+      const r = await fetch("https://api.github.com/user", { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${tok}` } });
+      if (!r.ok) throw new Error(r.status === 401 ? "GitHub не принял токен — проверь, что он скопирован целиком и не истёк" : "GitHub ответил " + r.status);
+      const me = await r.json();
+      store.set("token", tok); store.set("owner", me.login); sync.reset();
+      if (!cfg.github.username) store.set("pendingUser", me.login);
+      location.reload();
+    } catch (err) {
+      $("#lockErr").textContent = err.message === "Failed to fetch" ? "Нет связи с GitHub" : err.message;
+      btn.disabled = false;
+    }
+  });
+  window.Dash.onAuthError = () => showLock("Токен больше не действует — вставь новый");
+  $("#logout").onclick = () => {
+    if (!confirm("Выйти на этом устройстве? Данные останутся в синхронизации, на устройстве они удалятся.")) return;
+    try { Object.keys(localStorage).filter((k) => k.startsWith("dash.")).forEach((k) => localStorage.removeItem(k)); } catch {}
+    location.reload();
+  };
+
   /* ───────────── Boot & timers ───────────── */
+  if (!token()) { showLock(); return; }
+  document.body.classList.remove("locked");
+  migrateConfig();
   renderThemes(); renderSpaces(); renderAll(); renderSyncStatus();
+  // Первый вход: если ник для задач ещё не задан, подставляем владельца токена (после синхронизации)
+  if (store.get("pendingUser", "")) setTimeout(() => {
+    const u = store.get("pendingUser", ""); store.del("pendingUser");
+    if (!cfg.github.username && u) { db.set("cfg", { ...(db.get("cfg", null) || {}), ...cfgForSave(), github: { username: u } }); loadConfig(); ghCache.clear(); renderAll(); }
+  }, 4000);
   sync.schedule(0);
   let lastDay = ymd(new Date());
   setInterval(() => {
@@ -539,7 +882,4 @@
     if (!typing && (currentSpace().widgets || []).includes("github")) renderGrid();
   }, 5 * 60 * 1000);
 
-  if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  }
 })();

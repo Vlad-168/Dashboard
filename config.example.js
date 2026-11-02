@@ -5,30 +5,31 @@
  * сохранятся в браузере и перекроют этот файл.
  */
 window.DASHBOARD_CONFIG = {
-  name: "Влад",
+  name: "",            // имя для приветствия — задаётся в ⚙︎ и синхронизируется
   theme: "damson",            // damson | damson-light | noir | sage | sand | ocean
 
   github: {
-    username: "vlad-168",
+    username: "",          // ник аккаунта, с которого нужны задачи (задаётся в ⚙︎)
     token: "",                 // fine-grained PAT: Issues + Pull requests (read)
   },
 
   // Пространства: какие виджеты видны и какие репозитории GitHub относятся к ним.
-  // Виджеты: today, week, github, todo, stats, focus
+  // Виджеты: today, week, stats, github, todo, focus, lessons, lessonsWeek, coachStats, tournaments
   spaces: [
-    { id: "work",  name: "Работа", icon: "💼", widgets: ["github", "todo", "focus", "today"], repos: [] },
-    { id: "sport", name: "Спорт",  icon: "🏋️", widgets: ["today", "week", "stats", "todo"] },
-    { id: "life",  name: "Личное", icon: "🌿", widgets: ["todo", "week", "focus"] },
+    { id: "work",  name: "Работа",  icon: "💼", widgets: ["github", "todo", "focus", "today"], repos: [] },
+    { id: "sport", name: "Спорт",   icon: "🏋️", widgets: ["today", "tournaments", "week", "stats", "todo"] },
+    { id: "coach", name: "Коучинг", icon: "🎾", widgets: ["lessons", "lessonsWeek", "tournaments", "coachStats", "todo"] },
+    { id: "life",  name: "Личное",  icon: "🌿", widgets: ["todo", "week", "focus"] },
   ],
 
-  // Расписание тренировок: mon tue wed thu fri sat sun
-  schedule: {
-    mon: [{ time: "07:30", title: "Силовая — верх тела", duration: 60, type: "strength" }],
-    tue: [{ time: "19:00", title: "Бег 5 км", duration: 35, type: "cardio" }],
-    wed: [{ time: "07:30", title: "Силовая — низ тела", duration: 60, type: "strength" }],
-    thu: [{ time: "20:00", title: "Йога / мобильность", duration: 30, type: "mobility" }],
-    fri: [{ time: "07:30", title: "Фулбади", duration: 55, type: "strength" }],
-    sat: [{ time: "10:00", title: "Длинная пробежка", duration: 60, type: "cardio" }],
-    sun: [],
-  },
+  // Мои тренировки и занятия с учениками задаются в ⚙︎ и хранятся только
+  // на твоих устройствах и в приватной синхронизации — не в этом публичном файле.
+  // Формат (для config.local.js):
+  //   schedule: { mon: [{ time: "07:30", title: "Зал", duration: 60, type: "gym" }], ... }
+  //     type: gym | tennis | padel | cardio | mobility
+  //   lessons:  { mon: [{ time: "16:00", client: "Анна", sport: "padel", duration: 60, place: "Корт 2", price: 50 }], ... }
+  //     sport: tennis | padel;  duration: 60 | 90 | 120
+  currency: "€",
+  schedule: {},
+  lessons: {},
 };

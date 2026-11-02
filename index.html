@@ -12,6 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Dashboard" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=2" />
   <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon.png?v=2" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=2" />
@@ -26,8 +27,20 @@
   <script src="config.example.js"></script>
   <script src="config.local.js" onerror="void 0"></script>
 </head>
-<body>
+<body class="locked">
   <div class="bg" aria-hidden="true"><span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span><span class="grain"></span></div>
+
+  <!-- Экран входа: пока на устройстве нет токена, дашборд не показывается -->
+  <section id="lock" class="lock" hidden>
+    <form id="lockForm" class="lock-card">
+      <img src="icons/icon-192.png?v=2" alt="" width="72" height="72" />
+      <h1>Личный дашборд</h1>
+      <p class="sub">Доступ только для владельца. Вставь свой GitHub‑токен — он сохранится только на этом устройстве.</p>
+      <input id="lockToken" type="password" autocomplete="off" placeholder="github_pat_…" aria-label="GitHub токен" />
+      <button class="primary" type="submit">Войти</button>
+      <p class="err" id="lockErr"></p>
+    </form>
+  </section>
 
   <main class="shell">
     <header class="top">
@@ -81,6 +94,13 @@
         <div id="schedEditor" class="sched"></div>
       </fieldset>
 
+      <fieldset>
+        <legend>Коучинг — занятия с учениками</legend>
+        <p class="hint">Еженедельное расписание. Прошедшие занятия считаются проведёнными автоматически — отмечай только отмены.</p>
+        <label class="currency">Валюта<input name="currency" maxlength="4" autocomplete="off" /></label>
+        <div id="lessonEditor" class="sched"></div>
+      </fieldset>
+
       <details>
         <summary>Пространства (для продвинутых)</summary>
         <p class="hint">Виджеты: today, week, stats, github, todo, focus. В <code>repos</code> можно ограничить GitHub нужными репозиториями.</p>
@@ -89,7 +109,7 @@
 
       <p class="err" id="settingsErr"></p>
       <footer class="sheet-foot">
-        <button type="button" class="ghost" id="resetSettings">Сбросить</button>
+        <span class="foot-left"><button type="button" class="ghost" id="resetSettings">Сбросить</button><button type="button" class="ghost" id="logout">Выйти</button></span>
         <button type="submit" class="primary" value="save">Сохранить</button>
       </footer>
     </form>

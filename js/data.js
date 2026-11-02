@@ -148,6 +148,7 @@
         this.setStatus("ok");
       } catch (e) {
         this.setStatus("error", e.message || "нет сети");
+        if (e.status === 401) window.Dash.onAuthError?.();
       } finally {
         this.busy = false;
         if (this.again) { this.again = false; this.schedule(300); }

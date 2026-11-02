@@ -1,4 +1,6 @@
 /* ───────────── Themes ───────────── */
+:root { --tennis: #c3d65a; --padel: #5cc0d6; --gold: #f0c27b; }
+[data-theme="damson-light"], [data-theme="sand"] { --tennis: #7c8f12; --padel: #1f8aa3; --gold: #b07a1e; }
 :root,
 [data-theme="damson"] {
   --bg-0: #160c12;
@@ -212,7 +214,10 @@ h1 em { font-style: italic; color: var(--accent-hi); }
 .pill.done { opacity: .55; text-decoration: line-through; }
 .pill small { display: block; color: var(--faint); }
 .rest { font-size: 12px; color: var(--faint); margin-top: auto; }
-.t-strength { --c: var(--accent-hi); } .t-cardio { --c: var(--warn); } .t-mobility { --c: var(--ok); }
+.t-gym, .t-strength { --c: var(--accent-hi); } .t-cardio { --c: var(--warn); } .t-mobility { --c: var(--ok); }
+.t-tennis { --c: var(--tennis); } .t-padel { --c: var(--padel); }
+.pill.past { opacity: .6; }
+.pill.cancelled { opacity: .45; text-decoration: line-through; border-left-style: dashed; }
 @media (max-width: 720px) { .week { grid-template-columns: repeat(4, 1fr); } }
 
 /* GitHub */
@@ -314,6 +319,29 @@ h1 em { font-style: italic; color: var(--accent-hi); }
 .sd header { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .sd .rest { margin: 0; }
 .sr { display: grid; grid-template-columns: 92px 1fr 70px 140px 32px; gap: 6px; align-items: center; }
+.sr.lesson-row { grid-template-columns: 92px 1fr 130px 32px; grid-template-areas: "time client sport rm" "dur place price rm"; padding: 6px 0; }
+.lesson-row [name="time"] { grid-area: time; } .lesson-row [name="client"] { grid-area: client; } .lesson-row [name="sport"] { grid-area: sport; }
+.lesson-row [name="duration"] { grid-area: dur; } .lesson-row [name="place"] { grid-area: place; } .lesson-row [name="price"] { grid-area: price; }
+.lesson-row .icon-btn { grid-area: rm; }
+.sheet .currency { grid-template-columns: auto 90px; align-items: center; justify-content: start; gap: 10px; }
+
+/* Коучинг */
+.lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lesson { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--card-hi); border: 1px solid var(--line); }
+.lesson-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.lesson-main b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lesson-act { display: flex; gap: 6px; }
+.lesson.s-done .lesson-main b { color: var(--muted); }
+.lesson.s-cancel { opacity: .55; } .lesson.s-cancel .lesson-main b { text-decoration: line-through; }
+.check.cancel.on { background: #c75c5c; border-color: #c75c5c; color: #fff; }
+.sport { font-weight: 500; } .sport.tennis { color: var(--tennis); } .sport.padel { color: var(--padel); }
+.earn { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: var(--card-hi); border: 1px solid var(--line); }
+.earn div { display: grid; gap: 2px; } .earn .right { text-align: right; }
+.earn b { font-family: "Fraunces", Georgia, serif; font-weight: 400; font-size: 26px; line-height: 1.1; }
+.earn b.soft { color: var(--muted); font-size: 20px; }
+.split { height: 8px; border-radius: 4px; margin-top: 14px; background: var(--padel); overflow: hidden; }
+.split i { display: block; height: 100%; width: var(--tp); background: var(--tennis); }
+.split-lbl { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); }
 
 /* ───────────── Phone ───────────── */
 @media (max-width: 720px) {
@@ -378,8 +406,48 @@ h1 em { font-style: italic; color: var(--accent-hi); }
   .sr [name="duration"] { grid-column: 2; }
   .sr [name="type"] { grid-column: 1 / 3; }
   .sr .icon-btn { grid-column: 3; grid-row: 2 / 4; align-self: center; }
+  .sr.lesson-row { grid-template-columns: 1fr 1fr 32px; grid-template-areas: "client client client" "time sport rm" "dur price rm" "place place place"; }
+  .sr.lesson-row [name="time"] { grid-area: time; } .sr.lesson-row [name="duration"] { grid-area: dur; }
+  .sr.lesson-row .icon-btn { grid-area: rm; }
+  .lesson { padding: 12px 10px; gap: 10px; }
 }
 @media (hover: none) { .todo .del { opacity: .55; } }
 
 /* Запущено как приложение с экрана «Домой» */
 @media (display-mode: standalone) { body { user-select: none; -webkit-user-select: none; } input, textarea { user-select: text; -webkit-user-select: text; } }
+
+/* Турниры */
+.t-tour { --c: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); cursor: default; font-weight: 500; }
+.day.has-tour { border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.tours { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tour { position: relative; display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--card-hi); border: 1px solid var(--line); border-left: 3px solid var(--gold); }
+.tour-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-right: 26px; }
+.tour-date { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tour b { font-weight: 600; }
+.tour .del { position: absolute; top: 8px; right: 6px; border: 0; background: none; color: var(--faint); opacity: .6; }
+.tour-warn { margin-top: 4px; font-size: 13px; color: var(--warn); }
+.tour-warn .link { padding: 0 0 0 4px; }
+.tour-form { display: grid; gap: 8px; margin-bottom: 12px; }
+.tour-form[hidden] { display: none; }
+.tour-form input, .tour-form select { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card-hi); color: var(--text); outline: none; min-width: 0; width: 100%; }
+.tour-form input:focus, .tour-form select:focus { border-color: var(--accent-hi); }
+.tour-form select { appearance: none; -webkit-appearance: none; }
+.tour-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tour-row label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.tour-row.end { display: flex; justify-content: flex-end; }
+
+/* Экран входа */
+body.locked .shell, body.locked .spaces { display: none; }
+.lock { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
+.lock[hidden] { display: none; }
+.lock-card { width: min(400px, 100%); display: grid; gap: 14px; justify-items: center; text-align: center; padding: 32px 24px; border-radius: 28px;
+  background: var(--card); border: 1px solid var(--line); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); box-shadow: var(--shadow); }
+.lock-card img { border-radius: 18px; }
+.lock-card h1 { font-size: 32px; }
+.lock-card .sub { margin: 0; font-size: 14px; }
+.lock-card input { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card-hi); color: var(--text); outline: none; font-size: 16px; }
+.lock-card input:focus { border-color: var(--accent-hi); }
+.lock-card .primary { width: 100%; padding: 12px; font-size: 15px; }
+.lock-card .primary:disabled { opacity: .6; }
+.foot-left { display: flex; gap: 6px; }
+.lesson-act .check:not(.on) { color: var(--faint); border-color: var(--line); }
