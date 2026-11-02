@@ -4,7 +4,7 @@
 
   /* ═════════════════════════ Constants & helpers ═════════════════════════ */
   const BASE = window.DASHBOARD_CONFIG || {};
-  const CFG_VERSION = 5;
+  const CFG_VERSION = 6;
   const LOCALE = "en-GB";
 
   const $ = (s, r = document) => r.querySelector(s);
@@ -29,6 +29,7 @@
     { id: "work", name: "Work", icon: "💼", widgets: ["github", "todo", "focus", "today"], repos: [] },
     { id: "sport", name: "Training", icon: "🏋️", widgets: ["today", "tournaments", "week", "stats", "todo"] },
     { id: "coach", name: "Coaching", icon: "🎾", widgets: ["lessons", "lessonsWeek", "tournaments", "coachStats", "todo"] },
+    { id: "insta", name: "Instagram", icon: "📸", widgets: ["igOverview", "igChart", "igPosts"] },
     { id: "life", name: "Personal", icon: "🌿", widgets: ["todo", "week", "focus"] },
   ];
 
@@ -134,6 +135,10 @@
       extra.bot = { enabled: true };
       const anyPrice = Object.values(lessons).flat().some((l) => +l.price);
       if (!anyPrice && (o.currency ?? "€") === "€") extra.currency = "RSD";
+    }
+    if (v < 6 && !spaces.some((sp) => sp.id === "insta")) {
+      const at = spaces.findIndex((sp) => sp.id === "life");
+      spaces.splice(at < 0 ? spaces.length : at, 0, clone(DEFAULT_SPACES.find((sp) => sp.id === "insta")));
     }
     db.set("cfg", { ...o, ...extra, spaces, schedule, lessons, v: CFG_VERSION });
     loadConfig();
@@ -266,6 +271,7 @@
   function fmtNum(v, kind) {
     if (kind === "money") return `${Math.round(v).toLocaleString(LOCALE)} ${cfg.currency}`;
     if (kind === "hours") return (Math.round(v * 10) / 10).toLocaleString(LOCALE);
+    if (kind === "int") return Math.round(v).toLocaleString(LOCALE);
     return String(Math.round(v));
   }
   function animateIn(root) {
@@ -444,6 +450,9 @@
     lessonsWeek: { size: "wide", render: wLessonsWeek },
     coachStats: { size: "", render: wCoachStats },
     tournaments: { size: "", render: wTournaments },
+    igOverview: { size: "", render: wIgOverview },
+    igChart: { size: "wide", render: wIgChart },
+    igPosts: { size: "full", render: wIgPosts },
   };
 
   function card(title, size, body, extra = "") {
@@ -676,6 +685,115 @@
     return el;
   }
 
+  /* ── Instagram (through the bot's API worker, same URL and key as Coaching) ── */
+  var igData = store.get("igCache", null), igError = "", igLoading = false;
+  const igReady = () => !!(cfg.bot.apiUrl && cfg.bot.dashKey);
+  const fmtK = (n) => (n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e4 ? (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K" : n.toLocaleString(LOCALE));
+  async function refreshIg(force) {
+    if (!igReady() || igLoading) return;
+    if (!force && igData && Date.now() - igData.fetchedAt < 15 * 60 * 1000) return;
+    igLoading = true;
+    try {
+      const r = await fetch(`${cfg.bot.apiUrl}/instagram${force ? "?refresh=1" : ""}`, { headers: { Authorization: `Bearer ${cfg.bot.dashKey}` }, cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401) throw new Error("the dashboard key was rejected");
+      if (j.error === "not_configured") throw new Error("Instagram isn’t connected on the API worker yet");
+      if (!r.ok || j.error) throw new Error(j.message || `API ${r.status}`);
+      igData = { ...j, fetchedAt: Date.now() }; igError = "";
+      store.set("igCache", igData);
+    } catch (e) { igError = e.message === "Failed to fetch" ? "offline" : e.message; }
+    igLoading = false;
+    renderIgStatus();
+    const busyNow = document.activeElement?.matches("input, textarea") || $("#itemSheet").open;
+    if (!busyNow && (currentSpace().widgets || []).some((w) => w.startsWith("ig"))) renderGrid();
+  }
+  function renderIgStatus() {
+    const el = $("#igLine"); if (!el) return;
+    el.dataset.state = !igReady() ? "off" : igError ? "error" : igData ? "ok" : "syncing";
+    el.textContent = !igReady() ? "Add the API URL and key in Coaching first" : igError ? `Couldn’t update: ${igError}`
+      : igData ? `@${igData.profile?.username || "—"} · updated ${new Date(igData.fetchedAt).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })}` : "Loading…";
+  }
+  function igSetupCard(size, title) {
+    return card(title, size, `<div class="ig-setup">
+      <div class="ig-logo" aria-hidden="true">📸</div>
+      <div><b>Connect Instagram</b><p class="muted">${igError && igReady() ? esc(igError) + ". " : ""}Stats come from your API worker: followers, reach, views, engagement and top posts.</p>
+      <ol class="steps"><li>Switch @groshkov.padel to a professional account.</li><li>Create a Meta app and an Instagram token.</li><li>Add it to the worker (<code>IG_TOKEN</code>) — steps in the bot’s SECURITY.md.</li>${igReady() ? "" : "<li>Put the API URL and key into Settings → Coaching.</li>"}</ol>
+      <button class="btn sm" data-settings="instagram">Instagram settings</button></div></div>`);
+  }
+  // Follower change over N days: from daily snapshots, else from the API's follows/unfollows
+  function followerDelta(days) {
+    const h = igData?.history || {}, keys = Object.keys(h).sort();
+    if (keys.length >= 2) {
+      const last = keys[keys.length - 1], target = ymd(addDays(parseYmd(last), -days));
+      const base = keys.filter((k) => k <= target).pop() || keys[0];
+      if (base !== last) return h[last] - h[base];
+    }
+    const w = days <= 7 ? igData?.week : igData?.month;
+    return w && w.follows != null ? (w.follows || 0) - (w.unfollows || 0) : null;
+  }
+  function wIgOverview(size) {
+    if (!igReady() || !igData) return igSetupCard("wide", "Instagram");
+    const p = igData.profile || {}, w = igData.week || {}, d7 = followerDelta(7), d30 = followerDelta(30);
+    const er = w.reach ? ((w.total_interactions || 0) / w.reach) * 100 : null;
+    const delta = (n, label) => (n == null ? "" : `<span class="delta ${n >= 0 ? "up" : "down"}">${n >= 0 ? "▲" : "▼"} ${Math.abs(n).toLocaleString(LOCALE)} <small>${label}</small></span>`);
+    const body = `<a class="ig-head" href="https://www.instagram.com/${esc(p.username || "")}/" target="_blank" rel="noopener">
+        ${p.profile_picture_url ? `<img src="${esc(p.profile_picture_url)}" alt="" />` : `<span class="ig-avatar">📸</span>`}
+        <span><b>@${esc(p.username || "")}</b><span class="muted">${fmtK(p.media_count)} posts · ${fmtK(p.follows_count)} following</span></span></a>
+      <div class="ig-followers"><b>${count("ig-f", p.followers_count || 0, "int")}</b><span>followers</span><div class="ig-deltas">${delta(d7, "7 days")}${delta(d30, "30 days")}</div></div>
+      <div class="stats ig-stats">
+        <div class="stat"><b>${count("ig-r", w.reach || 0, "int")}</b><span>reach · 7d</span></div>
+        <div class="stat"><b>${count("ig-v", w.views || 0, "int")}</b><span>views · 7d</span></div>
+        <div class="stat"><b>${er == null ? "—" : er.toFixed(1) + "%"}</b><span>engagement</span></div>
+      </div>`;
+    const el = card("Instagram", size, body, `<button class="add-btn" data-ig-refresh title="Refresh" aria-label="Refresh">↻</button>`);
+    el.onclick = (e) => { if (e.target.closest("[data-ig-refresh]")) { haptic(); toast("Updating Instagram…"); refreshIg(true); } };
+    return el;
+  }
+  let igMetric = store.get("igMetric", "reach");
+  function areaChart(points) {
+    if (!points.length) return `<p class="empty">Not enough data yet — it builds up day by day.</p>`;
+    const W = 640, H = 170, P = 6, vals = points.map((p) => p.value), max = Math.max(...vals, 1), min = Math.min(...vals, 0);
+    const x = (i) => P + (i * (W - 2 * P)) / Math.max(1, points.length - 1), y = (v) => H - P - ((v - min) / (max - min || 1)) * (H - 2 * P - 14);
+    const line = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+    const area = `${line} L${x(points.length - 1).toFixed(1)},${H} L${x(0).toFixed(1)},${H} Z`;
+    const total = vals.reduce((a, b) => a + b, 0), best = points[vals.indexOf(max)];
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Chart">
+        <defs><linearGradient id="igGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent-hi)" stop-opacity=".45"/><stop offset="1" stop-color="var(--accent-hi)" stop-opacity="0"/></linearGradient></defs>
+        <path class="chart-area" d="${area}" fill="url(#igGrad)" />
+        <path class="chart-line" d="${line}" pathLength="1" />
+        ${points.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="9" class="chart-hit"><title>${fmtDate(parseYmd(p.date), { day: "numeric", month: "short" })}: ${p.value.toLocaleString(LOCALE)}</title></circle>`).join("")}
+      </svg>
+      <div class="chart-foot"><span>${fmtDate(parseYmd(points[0].date), { day: "numeric", month: "short" })}</span>
+        <span class="muted">${igMetric === "followers" ? `now ${fmtK(points[points.length - 1].value)}` : `total ${fmtK(total)} · best ${fmtDate(parseYmd(best.date), { day: "numeric", month: "short" })} (${fmtK(max)})`}</span>
+        <span>${fmtDate(parseYmd(points[points.length - 1].date), { day: "numeric", month: "short" })}</span></div>`;
+  }
+  function wIgChart(size) {
+    if (!igReady() || !igData) return null;
+    const hist = Object.entries(igData.history || {}).sort(([a], [b]) => a.localeCompare(b)).slice(-60).map(([date, value]) => ({ date, value }));
+    const series = { reach: igData.reach || [], newFollowers: igData.newFollowers || [], followers: hist };
+    const tabs = `<div class="seg ig-tabs">${[["reach", "Reach"], ["newFollowers", "New followers"], ["followers", "Followers"]].map(([k, l]) => `<button data-m="${k}" class="${k === igMetric ? "on" : ""}">${l}</button>`).join("")}</div>`;
+    const el = card("30 days", size, areaChart(series[igMetric] || []), tabs);
+    $(".ig-tabs", el).onclick = (e) => { const b = e.target.closest("button"); if (!b) return; igMetric = b.dataset.m; store.set("igMetric", igMetric); haptic(); const n = wIgChart(size); n.classList.add("no-enter"); el.replaceWith(n); };
+    return el;
+  }
+  let igSort = store.get("igSort", "recent");
+  function wIgPosts(size) {
+    if (!igReady() || !igData) return null;
+    const media = (igData.media || []).slice().sort((a, b) => (igSort === "top" ? (b.reach || b.likes || 0) - (a.reach || a.likes || 0) : (b.timestamp || "").localeCompare(a.timestamp || "")));
+    const ICON_T = { reel: "▶︎ Reel", video: "▶︎ Video", carousel: "❐ Carousel", post: "◻︎ Post" };
+    const body = media.length ? `<div class="ig-grid">${media.map((m, i) => `
+        <a class="ig-post" href="${esc(m.permalink || "#")}" target="_blank" rel="noopener" style="--d:${i * 50}ms">
+          <span class="ig-thumb" style="${m.thumb ? `background-image:url('${esc(m.thumb)}')` : ""}"><span class="ig-type">${ICON_T[m.type] || ""}</span></span>
+          <span class="ig-meta"><span>♥ ${fmtK(m.likes)}</span><span>💬 ${fmtK(m.comments)}</span>${m.reach != null ? `<span>👁 ${fmtK(m.reach)}</span>` : ""}</span>
+          <span class="ig-cap">${esc(m.caption || "")}</span>
+          <span class="ig-date">${m.timestamp ? fmtDate(new Date(m.timestamp), { day: "numeric", month: "short" }) : ""}</span>
+        </a>`).join("")}</div>` : `<p class="empty">No posts yet.</p>`;
+    const tabs = `<div class="seg ig-sort"><button data-s="recent" class="${igSort === "recent" ? "on" : ""}">Recent</button><button data-s="top" class="${igSort === "top" ? "on" : ""}">Top reach</button></div>`;
+    const el = card("Posts", size, body, tabs);
+    $(".ig-sort", el).onclick = (e) => { const b = e.target.closest("button"); if (!b) return; igSort = b.dataset.s; store.set("igSort", igSort); haptic(); const n = wIgPosts(size); n.classList.add("no-enter"); el.replaceWith(n); };
+    return el;
+  }
+
   /* ── GitHub ── */
   const GH_TABS = [
     // GitHub search requires is:issue or is:pr in every query, so "Assigned" is two queries
@@ -826,6 +944,7 @@
     const cards = (currentSpace().widgets || []).map((id, i) => {
       const w = WIDGETS[id]; if (!w) return null;
       const el = w.render(w.size);
+      if (!el) return null;
       el.style.setProperty("--i", i);
       return el;
     }).filter(Boolean);
@@ -1118,7 +1237,7 @@
 
   /* ═════════════════════════ Settings (sidebar sections) ═════════════════════════ */
   const sDlg = $("#settings"), sForm = $("#settingsForm");
-  const SECTIONS = { profile: "Profile", appearance: "Appearance", github: "GitHub", sync: "Sync", coaching: "Coaching", widget: "iPhone widget", spaces: "Spaces", account: "Account" };
+  const SECTIONS = { profile: "Profile", appearance: "Appearance", github: "GitHub", sync: "Sync", coaching: "Coaching", instagram: "Instagram", widget: "iPhone widget", spaces: "Spaces", account: "Account" };
   function showSection(id) {
     if (!SECTIONS[id]) id = "profile";
     $$("#settingsNav button").forEach((b) => b.classList.toggle("on", b.dataset.sec === id));
@@ -1142,6 +1261,7 @@
     sForm.ghToken.value = store.get("token", "");
     sForm.syncOn.checked = store.get("syncOn", true);
     sForm.currency.value = cfg.currency;
+    renderIgStatus();
     sForm.botOn.checked = cfg.bot.enabled; sForm.botApi.value = cfg.bot.apiUrl; sForm.botDashKey.value = cfg.bot.dashKey;
     sForm.botProject.value = cfg.bot.project; sForm.botKey.value = cfg.bot.apiKey; renderBotStatus();
     sForm.spaces.value = JSON.stringify(cfg.spaces, null, 2);
@@ -1167,7 +1287,7 @@
       store.set("syncOn", sForm.syncOn.checked);
       ghCache.clear(); ghCount = null;
       renderSpaces(); renderAll();
-      sync.schedule(0); renderSyncStatus(); refreshBot(true);
+      sync.schedule(0); renderSyncStatus(); refreshBot(true); refreshIg(true);
       toast("Settings saved");
     } catch (err) { e.preventDefault(); $("#settingsErr").textContent = "Error: " + err.message; showSection("spaces"); }
   });
@@ -1205,6 +1325,7 @@
     cfg.bot = { ...botForm(), enabled: true };
     botError = ""; $("#botLine").textContent = "Loading…"; refreshBot(true);
   };
+  $("#igRefresh").onclick = () => { igError = ""; $("#igLine").textContent = "Loading…"; refreshIg(true); };
   $("#translateNow").onclick = () => { sDlg.close(); openTranslateSheet(); };
   sDlg.addEventListener("click", (e) => { if (e.target === sDlg) sDlg.close(); });
   document.addEventListener("click", (e) => { const s = e.target.closest("[data-settings]"); if (s) { e.preventDefault(); openSettings(s.dataset.settings); } });
@@ -1259,7 +1380,8 @@
   renderSpaces(); renderAll(); renderSyncStatus();
   window.__booted = true;
   sync.schedule(0);
-  indexBot(); renderAll(); refreshBot(true);
+  indexBot(); renderAll(); refreshBot(true); refreshIg(false);
+  setInterval(() => { if (document.visibilityState === "visible") refreshIg(false); }, 15 * 60 * 1000);
   setInterval(() => { if (document.visibilityState === "visible") refreshBot(true); }, 5 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshBot(false); });
   if (store.get("pendingUser", "")) setTimeout(() => {

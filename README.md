@@ -54,10 +54,17 @@ Connect it in Settings → Coaching with the bot’s Firebase **project ID** and
 kept in your private sync, not in this repository. Only the needed fields are read (no Telegram ids).
 The iPhone widget shows these bookings too. Manage bookings in the bot itself.
 
+## Instagram 📸
+
+The **Instagram** space shows @groshkov.padel: followers with 7/30‑day growth, reach, views and engagement
+for the last 7 days, a 30‑day chart (reach, new followers, followers) and recent posts sorted by date or
+reach. Data comes from the bot’s API worker (`GET /instagram`, same URL and key as Coaching); the Instagram
+token is stored and renewed on the worker. Setup: Settings → Instagram, and the bot’s SECURITY.md → Instagram.
+
 ## Settings (⚙︎ or `,`)
 
 Sidebar sections: **Profile**, **Appearance** (themes, animations & 3D), **GitHub**, **Sync**,
-**Coaching** (bot connection, currency), **iPhone widget**, **Spaces** (advanced JSON), **Account** (log out).
+**Coaching** (bot connection, currency), **Instagram**, **iPhone widget**, **Spaces** (advanced JSON), **Account** (log out).
 
 ### GitHub token
 github.com → Settings → Developer settings → **Fine‑grained tokens**:

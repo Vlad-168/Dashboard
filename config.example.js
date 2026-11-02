@@ -15,11 +15,12 @@ window.DASHBOARD_CONFIG = {
     token: "",              // only ever in config.local.js, never here
   },
 
-  // Widgets: today, week, stats, github, todo, focus, lessons, lessonsWeek, coachStats, tournaments
+  // Widgets: today, week, stats, github, todo, focus, lessons, lessonsWeek, coachStats, tournaments, igOverview, igChart, igPosts
   spaces: [
     { id: "work",  name: "Work",     icon: "💼", widgets: ["github", "todo", "focus", "today"], repos: [] },
     { id: "sport", name: "Training", icon: "🏋️", widgets: ["today", "tournaments", "week", "stats", "todo"] },
     { id: "coach", name: "Coaching", icon: "🎾", widgets: ["lessons", "lessonsWeek", "tournaments", "coachStats", "todo"] },
+    { id: "insta", name: "Instagram", icon: "📸", widgets: ["igOverview", "igChart", "igPosts"] },
     { id: "life",  name: "Personal", icon: "🌿", widgets: ["todo", "week", "focus"] },
   ],
 
