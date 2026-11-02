@@ -382,6 +382,20 @@ h1 em { font-style: italic; background: linear-gradient(100deg, var(--accent-hi)
 .focus-btns { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .focus-btns .primary { min-width: 96px; }
 
+/* Bookings from the bot */
+.bot-badge { font-size: 12px; margin-right: 5px; }
+.chip.req { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.check.static { cursor: default; animation: none; }
+.check.static svg { stroke-dashoffset: 0; }
+.lesson.s-pending .row-main b { color: var(--warn); }
+.pill.pending { border-left-style: dotted; background: color-mix(in srgb, var(--warn) 12%, var(--card)); }
+.court-line { margin-top: 8px; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; font-size: 14px; }
+.facts dt { color: var(--faint); }
+.facts dd { margin: 0; }
+.facts a { color: var(--accent-hi); }
+a.primary { text-decoration: none; }
+
 /* Translate banner & sheet */
 .banner { padding: 16px 18px; background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 30%, transparent), var(--card-hi) 60%); }
 .banner-in { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }

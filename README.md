@@ -43,10 +43,21 @@ Source: [`widget/dashboard-widget.js`](widget/dashboard-widget.js).
   you and cancels them in one tap.
 - Durations: 1 h / 1.5 h / 2 h (30 min for short training).
 
+## Groshkov Padel bot
+
+Bookings from the Telegram bot show up in **Coaching** next to your weekly lessons (🤖), read‑only:
+clients, dates and times, format, duration, location (with map) and court type; your price per lesson
+computed with the bot’s rules (format × people × duration, subscriptions) and court fees per
+location / time; booking requests waiting for confirmation are highlighted and counted in the greeting.
+
+Connect it in Settings → Coaching with the bot’s Firebase **project ID** and **web API key**. They are
+kept in your private sync, not in this repository. Only the needed fields are read (no Telegram ids).
+The iPhone widget shows these bookings too. Manage bookings in the bot itself.
+
 ## Settings (⚙︎ or `,`)
 
 Sidebar sections: **Profile**, **Appearance** (themes, animations & 3D), **GitHub**, **Sync**,
-**Coaching** (currency), **Spaces** (advanced JSON), **Account** (log out).
+**Coaching** (bot connection, currency), **iPhone widget**, **Spaces** (advanced JSON), **Account** (log out).
 
 ### GitHub token
 github.com → Settings → Developer settings → **Fine‑grained tokens**:

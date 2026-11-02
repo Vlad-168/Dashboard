@@ -105,21 +105,72 @@ async function githubCount(user, token) {
   return n;
 }
 
+/* ── Bookings from the Groshkov Padel bot (read-only, same rules as the dashboard) ── */
+const BOT_FIELDS = ["name", "dateKey", "day", "time", "duration", "status", "formatIdx", "location", "courtType", "recurring", "subscriptionIncluded", "subscriptionPurchaseTotal", "subscriptionDiscount"];
+const FORMAT_PEOPLE = [1, 2, 3, 4, 3];
+const fsDec = (v) => !v ? null : "stringValue" in v ? v.stringValue : "integerValue" in v ? Number(v.integerValue) : "doubleValue" in v ? v.doubleValue
+  : "booleanValue" in v ? v.booleanValue : "mapValue" in v ? fsFields(v.mapValue.fields || {}) : "arrayValue" in v ? (v.arrayValue.values || []).map(fsDec) : null;
+const fsFields = (f) => { const o = {}; for (const k of Object.keys(f)) o[k] = fsDec(f[k]); return o; };
+let BOT_BASE = "", BOT_KEY = ""; // set from the synced settings (Settings → Coaching)
+async function fsGet(path) { const r = new Request(`${BOT_BASE}/${path}${path.includes("?") ? "&" : "?"}key=${encodeURIComponent(BOT_KEY)}`); const j = await r.loadJSON(); if (r.response.statusCode >= 400) throw new Error("bot " + r.response.statusCode); return j; }
+async function loadBot() {
+  const mask = BOT_FIELDS.map((f) => `&mask.fieldPaths=${f}`).join("");
+  const bookings = [];
+  let page = "";
+  for (let i = 0; i < 20; i++) {
+    const j = await fsGet(`bookings?pageSize=300${mask}${page ? "&pageToken=" + encodeURIComponent(page) : ""}`);
+    for (const d of j.documents || []) bookings.push(Object.assign(fsFields(d.fields || {}), { id: d.name.split("/").pop() }));
+    if (!j.nextPageToken) break;
+    page = j.nextPageToken;
+  }
+  let prices = {}, locations = [];
+  try { prices = fsFields((await fsGet("config/prices")).fields || {}); } catch (e) {}
+  try { locations = fsFields((await fsGet("config/locations")).fields || {}).list || []; } catch (e) {}
+  return { bookings, prices, locations };
+}
+function botLessonsByDate(bot) {
+  const out = {};
+  if (!bot) return out;
+  const prices = bot.prices || {}, locations = bot.locations || [];
+  for (const b of bot.bookings || []) {
+    if (!b.dateKey || !b.time) continue;
+    let [y, m, d] = b.dateKey.split("-").map(Number);
+    let date = new Date(y, m - 1, d);
+    if (b.day != null && b.day !== date.getDate()) date = new Date(date.getTime() + 864e5);
+    const key = ymd(date);
+    if (b.status === "pending" && b.recurring) {
+      const dow = date.getDay(), rel = new Date(date); rel.setDate(date.getDate() - (dow === 0 ? 6 : dow - 1) - 1); rel.setHours(0, 0, 0, 0);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (today < rel) continue;
+    }
+    const mult = (b.duration || 60) / 60;
+    const full = (b.formatIdx != null ? Number((prices.formats || {})[b.formatIdx]) || 0 : 0) * (b.formatIdx != null ? FORMAT_PEOPLE[b.formatIdx] || 1 : 1) * mult;
+    const price = b.subscriptionIncluded ? 0 : b.subscriptionPurchaseTotal ? Number(b.subscriptionPurchaseTotal)
+      : b.subscriptionDiscount != null ? Math.floor((full * (1 - b.subscriptionDiscount)) / 100) * 100 : Math.round(full);
+    (out[key] = out[key] || []).push({ id: "bot:" + b.id, source: "bot", botStatus: b.status || "pending", time: b.time, client: b.name || "Client",
+      sport: "padel", duration: b.duration || 60, place: b.location || "", price });
+  }
+  return out;
+}
+
 // Cache so the widget still shows something offline
 const fm = FileManager.local();
 const cachePath = fm.joinPath(fm.documentsDirectory(), "dashboard-widget-cache.json");
 const readCache = () => { try { return JSON.parse(fm.readString(cachePath)); } catch (e) { return null; } };
 const writeCache = (v) => { try { fm.writeString(cachePath, JSON.stringify(v)); } catch (e) {} };
 
-function model(records, ghTasks) {
+function model(records, ghTasks, bot) {
   const get = (k, f) => (records[k] && records[k].v != null ? records[k].v : f);
   const cfg = get("cfg", {}) || {};
   const schedule = withIds(cfg.schedule), lessons = withIds(cfg.lessons);
   const now = new Date();
   const workoutsFor = (d) => (schedule[DAY_KEYS[d.getDay()]] || []).slice().sort(byTime);
-  const lessonsFor = (d) => (lessons[DAY_KEYS[d.getDay()]] || []).slice().sort(byTime);
+  const botByDate = cfg.bot && cfg.bot.enabled ? botLessonsByDate(bot) : {};
+  const lessonsFor = (d) => (lessons[DAY_KEYS[d.getDay()]] || []).concat(botByDate[ymd(d)] || []).sort(byTime);
   const isDone = (d, w) => get("done:" + ymd(d), []).includes(w.id);
   const lessonStatus = (d, l) => {
+    if (l.source === "bot" && l.botStatus === "cancelled") return "cancel";
+    if (l.source === "bot" && l.botStatus === "pending") return "pending";
     const mark = get("lesson:" + ymd(d), {})[l.id];
     if (mark) return mark;
     const [h, m] = (l.time || "23:59").split(":").map(Number);
@@ -221,9 +272,9 @@ function lessonRows(parent, m, max) {
   if (!m.lessonsToday.length) { text(parent, "No lessons 🌴", 12, C.muted); return; }
   m.lessonsToday.slice(0, max).forEach(({ l, st }) => {
     const r = hstack(parent, 5);
-    dot(r, st === "cancel" ? C.danger : l.sport === "padel" ? C.padel : C.tennis, 6);
+    dot(r, st === "cancel" ? C.danger : st === "pending" ? C.gold : l.sport === "padel" ? C.padel : C.tennis, 6);
     text(r, l.time || "", 11, C.muted, "medium");
-    text(r, l.client, 12, st === "planned" ? C.text : C.faint, "semibold");
+    text(r, l.client, 12, st === "planned" ? C.text : st === "pending" ? C.gold : C.faint, "semibold");
   });
   if (m.lessonsToday.length > max) text(parent, `+${m.lessonsToday.length - max} more`, 10, C.faint);
 }
@@ -334,18 +385,24 @@ async function main() {
   const family = config.widgetFamily || "medium";
   const token = await getToken();
   if (!token) return errorWidget("Open Scriptable and run this script once to add your GitHub token.");
-  let records, gh = null, note = "";
+  let records, gh = null, bot = null, note = "";
+  const cache = readCache();
   try {
     records = await loadRecords(token);
-    try { gh = await githubCount((records.cfg && records.cfg.v && records.cfg.v.github && records.cfg.v.github.username) || "", token); } catch (e) {}
-    writeCache({ records, gh, at: Date.now() });
+    const cfgv = (records.cfg && records.cfg.v) || {};
+    try { gh = await githubCount((cfgv.github && cfgv.github.username) || "", token); } catch (e) {}
+    if (cfgv.bot && cfgv.bot.enabled && cfgv.bot.project && cfgv.bot.apiKey) {
+      BOT_BASE = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(cfgv.bot.project)}/databases/(default)/documents`;
+      BOT_KEY = cfgv.bot.apiKey;
+      try { bot = await loadBot(); } catch (e) { bot = cache && cache.bot; }
+    }
+    writeCache({ records, gh, bot, at: Date.now() });
   } catch (e) {
-    const cache = readCache();
     if (!cache) return errorWidget(e.message || "Couldn’t load your data");
-    records = cache.records; gh = cache.gh;
+    records = cache.records; gh = cache.gh; bot = cache.bot;
     note = "offline";
   }
-  return build(model(records, gh), family, note);
+  return build(model(records, gh, bot), family, note);
 }
 
 const widget = await main();
@@ -364,7 +421,8 @@ if (config.runsInWidget) {
     const fam = ["small", "medium", "large"][i];
     const token = await getToken();
     let w = widget;
-    if (token) { try { w = build(model(await loadRecords(token), null), fam, ""); } catch (e) { const c = readCache(); if (c) w = build(model(c.records, c.gh), fam, "offline"); } }
+    const c = readCache();
+    if (c) w = build(model(c.records, c.gh, c.bot), fam, "");
     if (fam === "small") await w.presentSmall(); else if (fam === "large") await w.presentLarge(); else await w.presentMedium();
   }
 }

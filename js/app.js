@@ -4,7 +4,7 @@
 
   /* ═════════════════════════ Constants & helpers ═════════════════════════ */
   const BASE = window.DASHBOARD_CONFIG || {};
-  const CFG_VERSION = 4;
+  const CFG_VERSION = 5;
   const LOCALE = "en-GB";
 
   const $ = (s, r = document) => r.querySelector(s);
@@ -84,12 +84,14 @@
       schedule: withIds(o.schedule ?? BASE.schedule ?? {}),
       lessons: withIds(o.lessons ?? BASE.lessons ?? {}),
       currency: o.currency ?? BASE.currency ?? "€",
+      bot: { enabled: o.bot?.enabled ?? false, project: o.bot?.project || "", apiKey: o.bot?.apiKey || "" },
     };
     if (!Array.isArray(cfg.spaces) || !cfg.spaces.length) cfg.spaces = clone(DEFAULT_SPACES);
+    if (typeof indexBot === "function") indexBot();
   }
   function saveCfg(patch) {
-    const { name, github, spaces, schedule, lessons, currency } = cfg;
-    db.set("cfg", { name, github, spaces, schedule, lessons, currency, ...patch, v: CFG_VERSION });
+    const { name, github, spaces, schedule, lessons, currency, bot } = cfg;
+    db.set("cfg", { name, github, spaces, schedule, lessons, currency, bot, ...patch, v: CFG_VERSION });
     loadConfig();
   }
   loadConfig();
@@ -126,7 +128,14 @@
         if (changed) db.set(key, next);
       }
     }
-    db.set("cfg", { ...o, spaces, schedule, lessons, v: CFG_VERSION });
+    const extra = {};
+    if (v < 5) {
+      // Connect the Groshkov Padel bot; its prices are in RSD
+      extra.bot = { enabled: true };
+      const anyPrice = Object.values(lessons).flat().some((l) => +l.price);
+      if (!anyPrice && (o.currency ?? "€") === "€") extra.currency = "RSD";
+    }
+    db.set("cfg", { ...o, ...extra, spaces, schedule, lessons, v: CFG_VERSION });
     loadConfig();
   }
 
@@ -143,7 +152,32 @@
     renderAll();
   }
 
-  const lessonsFor = (d) => (cfg.lessons[DAY_KEYS[d.getDay()]] || []).slice().sort(byTime);
+  /* Bookings from the Groshkov Padel bot (read-only), cached per device */
+  var botData = store.get("botCache", null), botByDate = {}, botError = ""; // var: indexBot() may run before this line during the first loadConfig()
+  const BOT_URL = window.PadelBot?.APP_URL || "https://t.me/GroshkovPadelBot/groshkovpadel";
+  function indexBot() { botByDate = cfg.bot.enabled && botData && window.PadelBot ? window.PadelBot.toLessonsByDate(botData) : {}; }
+  async function refreshBot(force) {
+    if (!cfg.bot.enabled || !window.PadelBot) { indexBot(); return; }
+    if (!force && botData && Date.now() - botData.at < 60 * 1000) return;
+    try {
+      botData = await window.PadelBot.fetchAll(cfg.bot); botError = "";
+      store.set("botCache", botData);
+    } catch (e) { botError = e.message === "Failed to fetch" ? "offline" : e.message; }
+    indexBot();
+    const busy = document.activeElement?.matches("input, textarea") || $("#itemSheet").open;
+    renderHeader(); if (!busy) renderGrid();
+    renderBotStatus();
+  }
+  function renderBotStatus() {
+    const el = $("#botLine"); if (!el) return;
+    const n = Object.values(botByDate).flat().length;
+    if (cfg.bot.enabled && (!cfg.bot.project || !cfg.bot.apiKey)) { el.dataset.state = "off"; el.textContent = "Add the project ID and API key below"; return; }
+    el.dataset.state = !cfg.bot.enabled ? "off" : botError ? "error" : botData ? "ok" : "syncing";
+    el.textContent = !cfg.bot.enabled ? "Not connected" : botError ? `Couldn’t update: ${botError}` : botData
+      ? `${n} bookings · updated ${new Date(botData.at).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })}` : "Loading…";
+  }
+  const weeklyLessonsFor = (d) => cfg.lessons[DAY_KEYS[d.getDay()]] || [];
+  const lessonsFor = (d) => [...weeklyLessonsFor(d), ...(botByDate[ymd(d)] || [])].sort(byTime);
   const lessonMarks = (d) => db.get("lesson:" + ymd(d), {});
   function lessonEnd(d, l) {
     const [h, m] = (l.time || "23:59").split(":").map(Number);
@@ -151,7 +185,14 @@
     return x;
   }
   // A past lesson counts as done automatically — only cancellations need marking
-  const lessonStatus = (d, l) => lessonMarks(d)[l.id] || (Date.now() >= lessonEnd(d, l) ? "done" : "planned");
+  const lessonStatus = (d, l) => {
+    if (l.source === "bot") {
+      if (l.botStatus === "cancelled") return "cancel";
+      if (l.botStatus === "pending") return "pending";
+    }
+    return lessonMarks(d)[l.id] || (Date.now() >= lessonEnd(d, l) ? "done" : "planned");
+  };
+  const pendingRequests = () => Object.entries(botByDate).filter(([k]) => k >= ymd(new Date())).flatMap(([, ls]) => ls).filter((l) => l.botStatus === "pending").length;
   function setLessonMark(d, l, val, ev) {
     const marks = { ...lessonMarks(d) };
     if (!val || marks[l.id] === val) delete marks[l.id]; else marks[l.id] = val;
@@ -303,6 +344,8 @@
     if (tToday) parts.push(`🏆 Tournament today: <b>${esc(tToday.title)}</b>.`);
     else if (tSoon) parts.push(`🏆 <b>${esc(tSoon.title)}</b> ${tourWhen(tSoon)}.`);
 
+    const req = pendingRequests();
+    if (req) parts.push(`📩 <b>${req === 1 ? "1 booking request" : `${req} booking requests`}</b> waiting in the bot.`);
     if (ghCount === 0) parts.push("GitHub inbox zero ✨");
     else if (ghCount != null) parts.push(`${plural(ghCount, "GitHub task", "GitHub tasks")} waiting.`);
     $("#subline").innerHTML = parts.join(" ");
@@ -510,14 +553,16 @@
     const body = list.length
       ? `<ul class="rows">${rows.map(({ l, st }) => {
           const [ico, label] = SPORTS[sportOf(l)];
-          return `<li class="row-item lesson s-${st}">
+          const bot = l.source === "bot";
+          return `<li class="row-item lesson s-${st} ${bot ? "from-bot" : ""}">
             <span class="row-time">${esc(l.time || "")}</span>
-            <button class="row-main" data-edit="${l.id}"><b>${esc(l.client)}</b>
+            <button class="row-main" data-edit="${l.id}"><b>${bot ? '<span class="bot-badge" title="From the Groshkov Padel bot">🤖</span>' : ""}${esc(l.client)}</b>
               <span class="wo-meta"><span class="sport ${sportOf(l)}">${ico} ${label}</span>${l.duration ? " · " + fmtDur(l.duration) : ""}${l.place ? " · " + esc(l.place) : ""}${+l.price ? " · " + fmtNum(l.price, "money") : ""}</span></button>
-            <span class="row-act">
+            ${bot ? `<span class="row-act">${st === "pending" ? '<span class="chip req">request</span>' : st === "cancel" ? '<span class="chip">cancelled</span>' : st === "done" ? `<span class="check on static">${ICON.check}</span>` : ""}</span>`
+            : `<span class="row-act">
               <button class="check ${st === "done" ? "on" : ""}" data-mark="done" data-id="${l.id}" title="Done" aria-label="Done">${ICON.check}</button>
               <button class="check cancel ${st === "cancel" ? "on" : ""}" data-mark="cancel" data-id="${l.id}" title="Cancelled" aria-label="Cancelled">${ICON.x}</button>
-            </span></li>`;
+            </span>`}</li>`;
         }).join("")}</ul>`
       : `<div class="today-main"><div class="ring" data-ring="l-free" data-to="100"><span>🌴</span></div>
            <div><div class="big-title">No lessons today</div><div class="wo-meta">Time for your own game — or rest</div></div></div>
@@ -541,7 +586,7 @@
         key: ymd(d), day: k, label: DAY_SHORT[k], num: d.getDate(), today: ymd(d) === ymd(now), tours: tourOn(d), hasItems: list.length, empty: "free",
         items: list.map((l) => {
           const st = lessonStatus(d, l);
-          return `<button class="pill t-${sportOf(l)} ${st === "cancel" ? "cancelled" : st === "done" ? "past" : ""}" data-id="${l.id}">${SPORTS[sportOf(l)][0]} ${esc(l.client)}<small>${esc(l.time || "")}${l.duration ? " · " + fmtDur(l.duration) : ""}</small></button>`;
+          return `<button class="pill t-${sportOf(l)} ${st === "cancel" ? "cancelled" : st === "done" ? "past" : st === "pending" ? "pending" : ""}" data-id="${l.id}">${l.source === "bot" ? "🤖" : SPORTS[sportOf(l)][0]} ${esc(l.client)}<small>${esc(l.time || "")}${l.duration ? " · " + fmtDur(l.duration) : ""}</small></button>`;
         }).join(""),
       };
     });
@@ -559,12 +604,13 @@
   function wCoachStats(size) {
     const now = new Date(), mon = mondayOf(now);
     const sum = (from, to) => {
-      const r = { done: 0, planned: 0, min: 0, earned: 0, forecast: 0, tennis: 0, padel: 0 };
+      const r = { done: 0, planned: 0, min: 0, earned: 0, forecast: 0, tennis: 0, padel: 0, court: 0 };
       for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
         for (const l of lessonsFor(d)) {
           const st = lessonStatus(d, l);
           if (st === "cancel") continue;
           r.planned++; r.forecast += +l.price || 0;
+          if (st === "done") r.court += +l.court || 0;
           if (st === "done") { r.done++; r.min += +l.duration || 0; r.earned += +l.price || 0; r[sportOf(l)]++; }
         }
       }
@@ -582,6 +628,7 @@
         <div><span class="muted">Earned this month</span><b>${count("c-e", month.earned, "money")}</b></div>
         <div class="right"><span class="muted">Forecast</span><b class="soft">${count("c-f", month.forecast, "money")}</b></div>
       </div>
+      ${month.court ? `<p class="hint court-line">Court fees passed to clubs this month: ${fmtNum(month.court, "money")}</p>` : ""}
       <div class="split" style="--tp:${tp}%"><i></i></div>
       <div class="split-lbl"><span>🎾 Tennis · ${month.tennis}</span><span>${month.padel} · Padel 🏓</span></div>`;
     return card("Coaching stats", size, body);
@@ -601,7 +648,8 @@
           <span class="wo-meta">${SPORTS[t.sport]?.[0] || "🎾"} ${SPORTS[t.sport]?.[1] || ""} · ${ROLES[t.role] || ""}${t.place ? " · " + esc(t.place) : ""}</span>
         </button>
         ${conf.length ? `<div class="tour-warn">⚠️ ${plural(conf.length, "lesson", "lessons")} on these days: ${conf.map((c) => esc(c.l.client)).join(", ")}
-            <button class="link" data-cancel-lessons="${esc(t.id)}">Cancel them</button></div>` : ""}
+            ${conf.some((c) => c.l.source !== "bot") ? `<button class="link" data-cancel-lessons="${esc(t.id)}">Cancel mine</button>` : ""}
+            ${conf.some((c) => c.l.source === "bot") ? `<a class="link" href="${BOT_URL}" target="_blank" rel="noopener">Open bot</a>` : ""}</div>` : ""}
       </li>`;
     }).join("");
     const body = upcoming.length
@@ -614,7 +662,7 @@
       if (t) openTourSheet(tournaments().find((x) => x.id === t.dataset.tour));
       if (cl) {
         const tr = tournaments().find((x) => x.id === cl.dataset.cancelLessons);
-        for (const c of tourConflicts(tr)) db.set("lesson:" + ymd(c.d), { ...lessonMarks(c.d), [c.l.id]: "cancel" });
+        for (const c of tourConflicts(tr)) if (c.l.source !== "bot") db.set("lesson:" + ymd(c.d), { ...lessonMarks(c.d), [c.l.id]: "cancel" });
         haptic(); toast("Lessons cancelled"); renderAll();
       }
     };
@@ -874,7 +922,22 @@
     });
   }
 
+  function openBotLessonSheet(l, date) {
+    const st = lessonStatus(date, l);
+    const label = { pending: "Request — confirm it in the bot", cancel: "Cancelled", done: "Done", planned: "Confirmed" }[st];
+    const rows = [
+      ["Date", `${occDate(date)}, ${esc(l.time)}`], ["Format", esc(l.format || "—")], ["Duration", fmtDur(l.duration)],
+      ["Location", `${esc(l.place || "—")}${l.courtType ? ` · ${l.courtType === "indoor" ? "covered" : "outdoor"}` : ""}${l.mapsUrl ? ` · <a href="${esc(l.mapsUrl)}" target="_blank" rel="noopener">Map</a>` : ""}`],
+      ["Your price", `${fmtNum(l.price, "money")}${l.subscription ? " · subscription" : ""}`], ["Court", l.court ? fmtNum(l.court, "money") : "—"],
+    ];
+    openSheet(`${sheetHead(esc(l.client), "🤖 Booked through Groshkov Padel")}
+      <div class="occ"><div><b>${label}</b><span class="muted">Bookings are managed in the bot</span></div></div>
+      <dl class="facts">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+      <footer class="item-foot"><button class="ghost" value="cancel" formnovalidate>Close</button><a class="primary" href="${BOT_URL}" target="_blank" rel="noopener">Open in the bot</a></footer>`, null, null);
+  }
+
   function openLessonSheet({ item, date, day }) {
+    if (item?.source === "bot") return openBotLessonSheet(item, date);
     const editing = !!item;
     const prev = Object.values(cfg.lessons).flat().slice(-1)[0];
     const l = item || { time: "10:00", client: "", sport: prev?.sport || "padel", duration: 60, place: prev?.place || "", price: prev?.price || "" };
@@ -1072,6 +1135,7 @@
     sForm.ghToken.value = store.get("token", "");
     sForm.syncOn.checked = store.get("syncOn", true);
     sForm.currency.value = cfg.currency;
+    sForm.botOn.checked = cfg.bot.enabled; sForm.botProject.value = cfg.bot.project; sForm.botKey.value = cfg.bot.apiKey; renderBotStatus();
     sForm.spaces.value = JSON.stringify(cfg.spaces, null, 2);
     sForm.motion.checked = store.get("motion", true);
     $("#motionNote").hidden = !reduced.matches;
@@ -1086,15 +1150,16 @@
     try {
       const spaces = JSON.parse(sForm.spaces.value);
       if (!Array.isArray(spaces) || !spaces.length) throw new Error("keep at least one space");
-      const next = { name: sForm.name.value.trim(), github: { username: normUser(sForm.ghUser.value) }, spaces, currency: sForm.currency.value.trim() || "€" };
-      const same = ["name", "github", "spaces", "currency"].every((k) => JSON.stringify(next[k]) === JSON.stringify(cfg[k]));
+      const next = { name: sForm.name.value.trim(), github: { username: normUser(sForm.ghUser.value) }, spaces, currency: sForm.currency.value.trim() || "€", bot: { enabled: sForm.botOn.checked, project: sForm.botProject.value.trim(), apiKey: sForm.botKey.value.trim() } };
+      const stored = db.get("cfg", null) || {};
+      const same = ["name", "github", "spaces", "currency", "bot"].every((k) => JSON.stringify(next[k]) === JSON.stringify(stored[k] ?? null));
       if (!same) saveCfg(next);
       const tok = sForm.ghToken.value.trim();
       if (tok !== store.get("token", "")) { store.set("token", tok); sync.reset(); }
       store.set("syncOn", sForm.syncOn.checked);
       ghCache.clear(); ghCount = null;
       renderSpaces(); renderAll();
-      sync.schedule(0); renderSyncStatus();
+      sync.schedule(0); renderSyncStatus(); refreshBot(true);
       toast("Settings saved");
     } catch (err) { e.preventDefault(); $("#settingsErr").textContent = "Error: " + err.message; showSection("spaces"); }
   });
@@ -1124,6 +1189,11 @@
     } catch (e) {
       note.innerHTML = `Couldn’t copy automatically — <a href="widget/dashboard-widget.js" target="_blank" rel="noopener">open the script</a>, select all and copy.`;
     }
+  };
+  $("#botRefresh").onclick = () => {
+    if (!sForm.botOn.checked) return;
+    cfg.bot = { enabled: true, project: sForm.botProject.value.trim(), apiKey: sForm.botKey.value.trim() };
+    botError = ""; $("#botLine").textContent = "Loading…"; refreshBot(true);
   };
   $("#translateNow").onclick = () => { sDlg.close(); openTranslateSheet(); };
   sDlg.addEventListener("click", (e) => { if (e.target === sDlg) sDlg.close(); });
@@ -1179,6 +1249,9 @@
   renderSpaces(); renderAll(); renderSyncStatus();
   window.__booted = true;
   sync.schedule(0);
+  indexBot(); renderAll(); refreshBot(true);
+  setInterval(() => { if (document.visibilityState === "visible") refreshBot(true); }, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshBot(false); });
   if (store.get("pendingUser", "")) setTimeout(() => {
     const u = store.get("pendingUser", ""); store.del("pendingUser");
     if (!cfg.github.username && u) { saveCfg({ github: { username: u } }); ghCache.clear(); renderAll(); }

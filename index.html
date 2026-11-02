@@ -149,6 +149,13 @@
           </section>
 
           <section data-sec="coaching" hidden>
+            <label class="toggle"><input type="checkbox" name="botOn" /><span><b>Groshkov Padel bot</b><small>Show bookings, prices and locations from the Telegram bot (read‑only)</small></span></label>
+            <div class="row2">
+              <label>Firebase project ID<input name="botProject" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="from the bot’s firebase config" /></label>
+              <label>Web API key<input name="botKey" type="password" autocomplete="off" placeholder="apiKey from the same config" /></label>
+            </div>
+            <div class="sync-card"><span id="botLine" class="sync-line"></span><button type="button" class="btn sm" id="botRefresh">Test &amp; refresh</button></div>
+            <p class="hint">Stored in your private sync, not in the dashboard’s public code. Values are in <code>src/firebase.js</code> of the bot’s repository.</p>
             <label class="currency">Currency<input name="currency" maxlength="4" autocomplete="off" /></label>
             <p class="hint">Add players and groups on the <b>Coaching</b> page with <b>+</b>. Past lessons count as done automatically — only mark cancellations.</p>
           </section>
@@ -193,6 +200,7 @@
   <dialog id="itemSheet" class="sheet item-sheet"><form method="dialog" id="itemForm" class="item-wrap"></form></dialog>
 
   <script src="js/data.js"></script>
+  <script src="js/padelbot.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

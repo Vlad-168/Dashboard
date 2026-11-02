@@ -1,7 +1,7 @@
 /* Offline cache for the app shell. Bump VERSION when files change so the iPhone picks up updates. */
-const VERSION = "dash-v8";
+const VERSION = "dash-v9";
 const SHELL = [
-  "./", "index.html", "css/styles.css", "js/data.js", "js/app.js", "config.example.js",
+  "./", "index.html", "css/styles.css", "js/data.js", "js/padelbot.js", "js/app.js", "config.example.js",
   "manifest.webmanifest", "icons/apple-touch-icon.png?v=2", "icons/icon-192.png?v=2", "icons/icon-512.png?v=2", "icons/favicon.png?v=2",
 ];
 
