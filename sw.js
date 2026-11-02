@@ -1,8 +1,8 @@
 /* Офлайн‑кэш оболочки приложения. Меняй VERSION при изменении файлов — iPhone подтянет обновление. */
-const VERSION = "dash-v3";
+const VERSION = "dash-v4";
 const SHELL = [
   "./", "index.html", "css/styles.css", "js/data.js", "js/app.js", "config.example.js",
-  "manifest.webmanifest", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png",
+  "manifest.webmanifest", "icons/apple-touch-icon.png?v=2", "icons/icon-192.png?v=2", "icons/icon-512.png?v=2", "icons/favicon.png?v=2",
 ];
 
 self.addEventListener("install", (e) => {
