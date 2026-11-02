@@ -774,6 +774,8 @@
       el.style.setProperty("--i", i);
       return el;
     }).filter(Boolean);
+    const banner = translateBanner();
+    if (banner) cards.unshift(banner);
     // Cards fly in only on first paint and when switching spaces
     if (!dir && grid.dataset.ready) cards.forEach((c) => c.classList.add("no-enter"));
     grid.replaceChildren(...cards);
@@ -874,7 +876,7 @@
 
   function openLessonSheet({ item, date, day }) {
     const editing = !!item;
-    const prev = Object.values(cfg.lessons).flat().at(-1);
+    const prev = Object.values(cfg.lessons).flat().slice(-1)[0];
     const l = item || { time: "10:00", client: "", sport: prev?.sport || "padel", duration: 60, place: prev?.place || "", price: prev?.price || "" };
     const dayOf = editing ? findDay(cfg.lessons, item.id) : day || DAY_KEYS[new Date().getDay()];
     let occ = "";
@@ -952,6 +954,98 @@
     itemForm.from.addEventListener("change", () => { if (!itemForm.to.value || itemForm.to.value < itemForm.from.value) itemForm.to.value = itemForm.from.value; });
   }
 
+  /* ═════════════════════════ Translate my data to English ═════════════════════════ */
+  const CYR = /[а-яё]/i;
+  // Longest phrases first; matched case-insensitively
+  const DICT = [
+    ["группа новичков", "Beginners group"], ["группа начинающих", "Beginners group"], ["длинная пробежка", "Long run"], ["с друзьями", "with friends"],
+    ["верх тела", "upper body"], ["низ тела", "lower body"], ["всё тело", "full body"], ["все тело", "full body"],
+    ["силовая", "Strength"], ["тренажёрный зал", "Gym"], ["тренажерный зал", "Gym"], ["зал", "Gym"], ["фулбади", "full body"], ["фуллбади", "full body"],
+    ["верх", "upper body"], ["низ", "lower body"], ["ноги", "legs"], ["спина", "back"], ["грудь", "chest"], ["руки", "arms"], ["плечи", "shoulders"], ["пресс", "abs"], ["кор", "core"],
+    ["падел", "Padel"], ["теннис", "Tennis"], ["игра", "match"], ["матч", "match"], ["спарринг", "sparring"], ["подача", "serve"], ["подачи", "serves"], ["приём", "return"], ["прием", "return"],
+    ["удары", "strokes"], ["удар", "stroke"], ["форхенд", "forehand"], ["бэкхенд", "backhand"], ["слева", "backhand"], ["справа", "forehand"], ["с лёта", "volley"], ["с лета", "volley"], ["смэш", "smash"],
+    ["отработка", "drills"], ["техника", "technique"], ["тактика", "tactics"], ["разминка", "Warm-up"], ["заминка", "Cool-down"], ["тренировка", "training"], ["занятие", "lesson"],
+    ["турнир", "tournament"], ["кубок", "cup"], ["лига", "league"], ["открытый", "Open"], ["финал", "final"],
+    ["бег", "Run"], ["пробежка", "Run"], ["км", "km"], ["кардио", "Cardio"], ["интервалы", "intervals"], ["йога", "Yoga"], ["растяжка", "Stretching"], ["мобильность", "mobility"],
+    ["плавание", "Swimming"], ["бассейн", "Pool"], ["велосипед", "Cycling"], ["вело", "Cycling"], ["восстановление", "Recovery"], ["массаж", "Massage"],
+    ["группа", "Group"], ["дети", "Kids"], ["детская группа", "Kids group"], ["взрослые", "Adults"], ["новички", "Beginners"], ["новичков", "beginners"], ["продвинутые", "Advanced"], ["индивидуально", "1-on-1"],
+    ["корт", "court"], ["клуба", "club"], ["клуб", "club"], ["по паделу", "padel"], ["по теннису", "tennis"], ["лет", "y.o."], ["и", "&"],
+    ["спорт", "Training"], ["коучинг", "Coaching"], ["работа", "Work"], ["личное", "Personal"], ["главное", "Main"],
+  ].sort((a, b) => b[0].length - a[0].length);
+  const TR = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f",
+    х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya" };
+  const NAMES = { "максим": "Max", "александр": "Alexander", "алексей": "Alexey", "андрей": "Andrey", "дмитрий": "Dmitry", "илья": "Ilya", "мария": "Maria", "анна": "Anna", "ольга": "Olga",
+    "екатерина": "Ekaterina", "наталья": "Natalia", "татьяна": "Tatiana", "юлия": "Julia", "евгений": "Evgeny", "сергей": "Sergey", "михаил": "Mikhail", "павел": "Pavel", "влад": "Vlad", "владислав": "Vladislav" };
+  function translit(word) {
+    const named = NAMES[word.toLowerCase()];
+    if (named) return named;
+    const out = [...word].map((ch) => { const lo = ch.toLowerCase(), t = TR[lo]; if (t == null) return ch; return ch === lo ? t : t.charAt(0).toUpperCase() + t.slice(1); }).join("");
+    return out;
+  }
+  function toEnglish(text, kind) {
+    if (!CYR.test(text)) return text;
+    let s = " " + text + " ";
+    if (kind !== "person") for (const [ru, en] of DICT) {
+      const re = new RegExp(`(^|[^а-яёa-z])${ru.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[^а-яёa-z]|$)`, "gi");
+      s = s.replace(re, (m, pre) => pre + en);
+    }
+    s = s.replace(/[а-яё]+/gi, (w) => translit(w)).trim().replace(/\s+/g, " ");
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  function collectCyrillic() {
+    const rows = new Map(); // original → { kind, label }
+    const add = (v, kind, label) => { if (v && CYR.test(v) && !rows.has(v)) rows.set(v, { kind, label }); };
+    add(cfg.name, "person", "Your name");
+    for (const list of Object.values(cfg.schedule)) for (const w of list || []) add(w.title, "text", "Training");
+    for (const list of Object.values(cfg.lessons)) for (const l of list || []) { add(l.client, "person", "Player / group"); add(l.place, "text", "Court / club"); }
+    for (const t of db.get("tournaments", [])) { add(t.title, "text", "Tournament"); add(t.place, "text", "Club / city"); }
+    for (const sp of cfg.spaces) add(sp.name, "text", "Space");
+    return rows;
+  }
+  function openTranslateSheet() {
+    const rows = [...collectCyrillic()];
+    if (!rows.length) { toast("Everything is already in English"); return; }
+    // Players/groups may contain words ("Группа новичков"), so try the dictionary when it changes something useful
+    const suggest = (orig, kind) => (kind === "person" && /\s/.test(orig) ? toEnglish(orig, "text") : toEnglish(orig, kind));
+    openSheet(`${sheetHead("Translate to English", `${rows.length} names in Russian. Check the suggestions, edit any, then apply.`)}
+      <div class="tr-list">${rows.map(([orig, r], i) => `
+        <div class="tr-row"><span class="tr-kind">${r.label}</span><span class="tr-orig">${esc(orig)}</span>
+        <input data-orig="${i}" value="${esc(suggest(orig, r.kind))}" aria-label="English for ${esc(orig)}" /></div>`).join("")}</div>
+      <p class="err" id="itemErr"></p>
+      <footer class="item-foot"><button class="ghost" value="cancel" formnovalidate>Not now</button><button class="primary" value="save">Apply to all devices</button></footer>`,
+    () => {
+      const map = new Map();
+      $$("[data-orig]", itemForm).forEach((inp) => { const v = inp.value.trim(); if (v) map.set(rows[+inp.dataset.orig][0], v); });
+      const tr = (v) => (map.has(v) ? map.get(v) : v);
+      const mapList = (m, fn) => { const out = {}; for (const k of Object.keys(m)) out[k] = (m[k] || []).map(fn); return out; };
+      saveCfg({
+        name: tr(cfg.name),
+        schedule: mapList(cfg.schedule, (w) => ({ ...w, title: tr(w.title) })),
+        lessons: mapList(cfg.lessons, (l) => ({ ...l, client: tr(l.client), place: tr(l.place || "") })),
+        spaces: cfg.spaces.map((sp) => ({ ...sp, name: tr(sp.name) })),
+      });
+      const tours = db.get("tournaments", []);
+      if (tours.some((t) => map.has(t.title) || map.has(t.place))) db.set("tournaments", tours.map((t) => ({ ...t, title: tr(t.title), place: tr(t.place || "") })));
+      store.set("translateDismissed", true);
+      renderSpaces(); renderAll(); toast(`Renamed ${map.size} ${map.size === 1 ? "item" : "items"}`);
+    });
+  }
+  function translateBanner() {
+    const n = collectCyrillic().size;
+    if (!n || store.get("translateDismissed", false)) return null;
+    const el = document.createElement("article");
+    el.className = "card full banner";
+    el.innerHTML = `<span class="glare" aria-hidden="true"></span><div class="banner-in"><span class="banner-ico">🇬🇧</span>
+      <div><b>${n} of your names are still in Russian</b><span class="muted">Training, players, places and tournaments — translate them in one go.</span></div>
+      <div class="banner-act"><button class="ghost" data-tr="later">Later</button><button class="primary" data-tr="open">Translate to English</button></div></div>`;
+    el.onclick = (e) => {
+      const b = e.target.closest("[data-tr]"); if (!b) return;
+      if (b.dataset.tr === "open") openTranslateSheet();
+      else { store.set("translateDismissed", true); el.remove(); }
+    };
+    return el;
+  }
+
   /* ═════════════════════════ Settings (sidebar sections) ═════════════════════════ */
   const sDlg = $("#settings"), sForm = $("#settingsForm");
   const SECTIONS = { profile: "Profile", appearance: "Appearance", github: "GitHub", sync: "Sync", coaching: "Coaching", spaces: "Spaces", account: "Account" };
@@ -1020,6 +1114,7 @@
     location.reload();
   };
   $("#openSettings").onclick = () => openSettings();
+  $("#translateNow").onclick = () => { sDlg.close(); openTranslateSheet(); };
   sDlg.addEventListener("click", (e) => { if (e.target === sDlg) sDlg.close(); });
   document.addEventListener("click", (e) => { const s = e.target.closest("[data-settings]"); if (s) { e.preventDefault(); openSettings(s.dataset.settings); } });
 
@@ -1067,10 +1162,11 @@
   applyMotion();
   reduced.addEventListener?.("change", applyMotion);
   applyTheme(store.get("theme", BASE.theme || "damson"));
-  if (!token()) { showLock(); return; }
+  if (!token()) { showLock(); window.__booted = true; return; }
   document.body.classList.remove("locked");
   migrateConfig();
   renderSpaces(); renderAll(); renderSyncStatus();
+  window.__booted = true;
   sync.schedule(0);
   if (store.get("pendingUser", "")) setTimeout(() => {
     const u = store.get("pendingUser", ""); store.del("pendingUser");

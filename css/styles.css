@@ -382,6 +382,19 @@ h1 em { font-style: italic; background: linear-gradient(100deg, var(--accent-hi)
 .focus-btns { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .focus-btns .primary { min-width: 96px; }
 
+/* Translate banner & sheet */
+.banner { padding: 16px 18px; background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 30%, transparent), var(--card-hi) 60%); }
+.banner-in { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.banner-in > div:nth-child(2) { flex: 1; min-width: 200px; display: grid; gap: 2px; }
+.banner-ico { font-size: 28px; }
+.banner-act { display: flex; gap: 8px; }
+.tr-list { display: grid; gap: 8px; max-height: 52dvh; overflow: auto; margin: 0 -4px; padding: 0 4px; }
+.tr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+.tr-kind { grid-column: 1 / -1; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+.tr-orig { color: var(--muted); overflow-wrap: anywhere; }
+.tr-orig::after { content: " →"; color: var(--faint); }
+@media (max-width: 720px) { .tr-row { grid-template-columns: 1fr; } .banner-act { width: 100%; } .banner-act .primary { flex: 1; } }
+
 /* Effects */
 .spark { position: fixed; z-index: 100; width: 8px; height: 8px; border-radius: 3px; pointer-events: none; }
 .toast { position: fixed; z-index: 200; left: 50%; bottom: 28px; transform: translate(-50%, 30px) scale(.96); opacity: 0; pointer-events: none;

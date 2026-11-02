@@ -24,6 +24,31 @@
     } catch (e) {}
   </script>
 
+  <script>
+    // If the app fails to start, show the reason instead of a blank screen
+    window.addEventListener("error", function (e) { if (!window.__booted) showBootError(e.message || "Script error"); });
+    window.addEventListener("unhandledrejection", function (e) { if (!window.__booted) showBootError(String(e.reason)); });
+    setTimeout(function () { if (!window.__booted) showBootError("The app did not start in time (slow network?)"); }, 12000);
+    function showBootError(msg) {
+      if (document.getElementById("bootErr")) return;
+      var d = document.createElement("div");
+      d.id = "bootErr";
+      d.style.cssText = "position:fixed;inset:auto 16px 24px;z-index:999;padding:16px;border-radius:18px;background:#24131c;color:#f8ecf2;font:14px/1.45 -apple-system,sans-serif;border:1px solid rgba(255,220,236,.25);box-shadow:0 20px 40px rgba(0,0,0,.5)";
+      d.innerHTML = "<b>Dashboard couldn’t start</b><br><span style='opacity:.75;word-break:break-word'></span><br><button style='margin-top:10px;padding:9px 14px;border-radius:12px;border:0;background:#854c65;color:#fff;font:inherit'>Update app &amp; reload</button>";
+      d.querySelector("span").textContent = msg;
+      d.querySelector("button").onclick = function () {
+        var done = function () { location.reload(); };
+        try {
+          Promise.all([
+            navigator.serviceWorker ? navigator.serviceWorker.getRegistrations().then(function (r) { return Promise.all(r.map(function (x) { return x.unregister(); })); }) : 0,
+            window.caches ? caches.keys().then(function (k) { return Promise.all(k.map(function (x) { return caches.delete(x); })); }) : 0,
+          ]).then(done, done);
+        } catch (err) { done(); }
+      };
+      (document.body || document.documentElement).appendChild(d);
+    }
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" />
@@ -100,6 +125,7 @@
           <section data-sec="profile">
             <label>Your name<input name="name" autocomplete="off" placeholder="Shown in the greeting" /></label>
             <p class="hint">Training, lessons and tournaments are added right on their pages — tap <b>+</b> on a card, or tap any session to edit it.</p>
+            <div class="sync-card"><div><b>Translate to English</b><br><small class="muted">Rename training, players, places and tournaments that are still in Russian</small></div><button type="button" class="btn sm" id="translateNow">Open</button></div>
           </section>
 
           <section data-sec="appearance" hidden>
