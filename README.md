@@ -26,6 +26,12 @@ count‑ups, confetti) that respects *Reduce Motion*.
 2. Share → **Add to Home Screen**.
 3. Open it from the icon and paste your GitHub token.
 
+### iPhone — home screen widget
+Settings → **iPhone widget** → *Copy widget script*, paste it into a new script in the free
+**[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** app, run it once to save your
+token, then add a Scriptable widget (small / medium / large) and pick the script.
+Source: [`widget/dashboard-widget.js`](widget/dashboard-widget.js).
+
 ## Using it
 
 - **Spaces** — tabs at the top (Mac: keys `1`–`9`) or the bottom bar on iPhone; swipe between them.

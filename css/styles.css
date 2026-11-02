@@ -487,6 +487,9 @@ h1 em { font-style: italic; background: linear-gradient(100deg, var(--accent-hi)
 .sync-line[data-state="ok"]::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 .sync-line[data-state="syncing"]::before { background: var(--warn); animation: pulse 1s infinite; }
 .sync-line[data-state="error"]::before { background: var(--danger); }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+.steps b { color: var(--text); }
+.steps a, .sync-card a { color: var(--accent-hi); }
 .currency { grid-template-columns: auto 100px; align-items: center; justify-content: start; gap: 12px !important; }
 
 /* ═════════════════════════ Lock screen ═════════════════════════ */

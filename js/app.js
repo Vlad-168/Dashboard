@@ -1048,7 +1048,7 @@
 
   /* ═════════════════════════ Settings (sidebar sections) ═════════════════════════ */
   const sDlg = $("#settings"), sForm = $("#settingsForm");
-  const SECTIONS = { profile: "Profile", appearance: "Appearance", github: "GitHub", sync: "Sync", coaching: "Coaching", spaces: "Spaces", account: "Account" };
+  const SECTIONS = { profile: "Profile", appearance: "Appearance", github: "GitHub", sync: "Sync", coaching: "Coaching", widget: "iPhone widget", spaces: "Spaces", account: "Account" };
   function showSection(id) {
     if (!SECTIONS[id]) id = "profile";
     $$("#settingsNav button").forEach((b) => b.classList.toggle("on", b.dataset.sec === id));
@@ -1114,6 +1114,17 @@
     location.reload();
   };
   $("#openSettings").onclick = () => openSettings();
+  $("#copyWidget").onclick = async () => {
+    const note = $("#widgetCopyNote");
+    try {
+      const code = await (await fetch("widget/dashboard-widget.js", { cache: "no-store" })).text();
+      await navigator.clipboard.writeText(code);
+      note.textContent = "Copied! Now paste it into a new Scriptable script.";
+      haptic(); toast("Widget script copied");
+    } catch (e) {
+      note.innerHTML = `Couldn’t copy automatically — <a href="widget/dashboard-widget.js" target="_blank" rel="noopener">open the script</a>, select all and copy.`;
+    }
+  };
   $("#translateNow").onclick = () => { sDlg.close(); openTranslateSheet(); };
   sDlg.addEventListener("click", (e) => { if (e.target === sDlg) sDlg.close(); });
   document.addEventListener("click", (e) => { const s = e.target.closest("[data-settings]"); if (s) { e.preventDefault(); openSettings(s.dataset.settings); } });

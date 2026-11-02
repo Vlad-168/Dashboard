@@ -110,6 +110,7 @@
           <button type="button" data-sec="github"><svg viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="8" r="2.2"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3-11 6.5"/></svg><span>GitHub</span></button>
           <button type="button" data-sec="sync"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12A8 8 0 0 1 18.3 7.1"/><path d="M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2"/></svg><span>Sync</span></button>
           <button type="button" data-sec="coaching"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6c3.3 3.3 3.3 9.5 0 12.8M18.4 5.6c-3.3 3.3-3.3 9.5 0 12.8"/></svg><span>Coaching</span></button>
+          <button type="button" data-sec="widget"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="3"/><rect x="8.5" y="6" width="3" height="3" rx=".8"/><rect x="12.5" y="6" width="3" height="3" rx=".8"/><path d="M10.5 18.5h3"/></svg><span>iPhone widget</span></button>
           <button type="button" data-sec="spaces"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg><span>Spaces</span></button>
           <button type="button" data-sec="account"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>Account</span></button>
         </nav>
@@ -150,6 +151,18 @@
           <section data-sec="coaching" hidden>
             <label class="currency">Currency<input name="currency" maxlength="4" autocomplete="off" /></label>
             <p class="hint">Add players and groups on the <b>Coaching</b> page with <b>+</b>. Past lessons count as done automatically — only mark cancellations.</p>
+          </section>
+
+          <section data-sec="widget" hidden>
+            <p class="hint">A home screen widget with today’s training and lessons, your next tournament, streak and GitHub tasks. Small, medium and large sizes; tap it to open the dashboard.</p>
+            <ol class="steps">
+              <li>Install the free <a href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noopener">Scriptable</a> app.</li>
+              <li>Tap <b>Copy widget script</b> below.</li>
+              <li>In Scriptable tap <b>+</b>, paste, and name it <b>Dashboard</b>.</li>
+              <li>Run it once (▶︎) and paste your GitHub token — it’s saved in the iOS Keychain.</li>
+              <li>Long‑press the home screen → <b>+</b> → Scriptable → pick a size → tap the widget → Script: <b>Dashboard</b>.</li>
+            </ol>
+            <div class="sync-card"><span id="widgetCopyNote" class="muted">The widget reads the same private sync as this dashboard.</span><button type="button" class="primary" id="copyWidget">Copy widget script</button></div>
           </section>
 
           <section data-sec="spaces" hidden>
