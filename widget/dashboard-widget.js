@@ -185,8 +185,8 @@ function model(records, ghTasks, bot) {
 
   // Next thing today: an undone training later today or the next planned lesson
   const cands = [];
-  training.forEach(({ w, done }) => { if (!done && minutes(w.time) + (+w.duration || 60) > nowMin) cands.push({ kind: "training", time: w.time, title: w.title, meta: `${TYPE_ICON[w.type] || "🏋️"} ${fmtDur(w.duration)}`.trim() }); });
-  lessonsToday.forEach(({ l, st }) => { if (st === "planned") cands.push({ kind: "lesson", time: l.time, title: l.client, meta: `${(SPORT[l.sport] || SPORT.tennis)[0]} ${l.place || (SPORT[l.sport] || SPORT.tennis)[1]}`, sport: l.sport }); });
+  training.forEach(({ w, done }) => { if (!done && minutes(w.time) + (+w.duration || 60) > nowMin) cands.push({ kind: "training", time: w.time, dur: +w.duration || 60, title: w.title, meta: `${TYPE_ICON[w.type] || "🏋️"} ${fmtDur(w.duration)}`.trim() }); });
+  lessonsToday.forEach(({ l, st }) => { if (st === "planned") cands.push({ kind: "lesson", time: l.time, dur: +l.duration || 60, title: l.client, meta: `${(SPORT[l.sport] || SPORT.tennis)[0]} ${l.place || (SPORT[l.sport] || SPORT.tennis)[1]}`, sport: l.sport }); });
   cands.sort(byTime);
 
   // Streak (rest days don't break it)
@@ -223,7 +223,8 @@ function model(records, ghTasks, bot) {
 
   const h = now.getHours();
   const greet = h >= 5 && h < 12 ? "Good morning" : h >= 12 && h < 17 ? "Good afternoon" : h >= 17 && h < 23 ? "Good evening" : "Good night";
-  return { now, name: cfg.name || "", greet, training, lessonsToday, next: cands[0], streak, tour, tourWhen, week, earned,
+  const nextEndsAt = cands[0] ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, minutes(cands[0].time) + cands[0].dur) : null;
+  return { now, nextEndsAt, name: cfg.name || "", greet, training, lessonsToday, next: cands[0], streak, tour, tourWhen, week, earned,
     currency: cfg.currency || "€", ghTasks };
 }
 
@@ -278,12 +279,29 @@ function lessonRows(parent, m, max) {
   });
   if (m.lessonsToday.length > max) text(parent, `+${m.lessonsToday.length - max} more`, 10, C.faint);
 }
+// "↻ 5 min" — a relative date that iOS re-renders on its own, so a stale widget is obvious
+function updatedAgo(parent, at) {
+  const s = hstack(parent, 2);
+  text(s, "↻", 9, C.faint, "semibold");
+  const d = s.addDate(new Date(at || Date.now()));
+  d.applyRelativeStyle();
+  d.font = Font.mediumSystemFont(9); d.textColor = col(C.faint); d.lineLimit = 1;
+  return s;
+}
 function footer(parent, m) {
   const row = hstack(parent, 6);
   if (m.tour) pill(row, `🏆 ${m.tour.title} · ${m.tourWhen}`, "#4a3622", C.gold);
   row.addSpacer();
   if (m.ghTasks != null) text(row, `GitHub ${m.ghTasks}`, 10, C.muted, "semibold");
   if (m.streak) text(row, `🔥 ${m.streak}`, 10, C.muted, "semibold");
+  updatedAgo(row, m.fetchedAt);
+}
+// Ask iOS to re-render right after midnight, after the next session ends, and at least every 15 minutes
+function nextRefresh(m) {
+  const now = Date.now(), midnight = new Date(); midnight.setHours(24, 1, 0, 0);
+  let t = Math.min(now + 15 * 60 * 1000, midnight.getTime());
+  if (m.nextEndsAt && m.nextEndsAt.getTime() > now) t = Math.min(t, m.nextEndsAt.getTime() + 60 * 1000);
+  return new Date(t);
 }
 
 /* ───────────── Widgets ───────────── */
@@ -294,7 +312,7 @@ function build(m, family, note) {
   g.startPoint = new Point(0, 0); g.endPoint = new Point(1, 1);
   w.backgroundGradient = g;
   w.url = DASH_URL;
-  w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
+  w.refreshAfterDate = nextRefresh(m);
 
   if (family === "small") {
     w.setPadding(14, 14, 12, 14);
@@ -313,7 +331,10 @@ function build(m, family, note) {
       text(w, m.training.length ? `${done}/${m.training.length} training done` : "Rest day ☕", 12, C.text, "semibold", 2);
     }
     w.addSpacer();
-    if (m.tour) text(w, `🏆 ${m.tourWhen}`, 10, C.gold, "semibold");
+    const bottom = hstack(w, 4);
+    if (m.tour) text(bottom, `🏆 ${m.tourWhen}`, 10, C.gold, "semibold");
+    bottom.addSpacer();
+    updatedAgo(bottom, m.fetchedAt);
   } else {
     const large = family === "large";
     w.setPadding(14, 16, 12, 16);
@@ -409,7 +430,9 @@ async function main() {
     records = cache.records; gh = cache.gh; bot = cache.bot;
     note = "offline";
   }
-  return build(model(records, gh, bot), family, note);
+  const m = model(records, gh, bot);
+  m.fetchedAt = note === "offline" && cache ? cache.at : Date.now();
+  return build(m, family, note);
 }
 
 const widget = await main();
@@ -429,7 +452,7 @@ if (config.runsInWidget) {
     const token = await getToken();
     let w = widget;
     const c = readCache();
-    if (c) w = build(model(c.records, c.gh, c.bot), fam, "");
+    if (c) { const mm = model(c.records, c.gh, c.bot); mm.fetchedAt = c.at; w = build(mm, fam, ""); }
     if (fam === "small") await w.presentSmall(); else if (fam === "large") await w.presentLarge(); else await w.presentMedium();
   }
 }
