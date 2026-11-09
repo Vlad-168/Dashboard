@@ -34,6 +34,12 @@ Source: [`widget/dashboard-widget.js`](widget/dashboard-widget.js).
 
 ## Using it
 
+- **Home** — one calendar for everything: training, lessons (yours and from the bot) and tournaments.
+  Week, Month and List views, filters, tap any event to edit it.
+- **Share** (on the calendar) — a read‑only link to your schedule (`share.html`), updated automatically,
+  plus a calendar subscription for Apple / Google Calendar and an `.ics` download. Players’ names are hidden
+  by default; prices, earnings, tasks and GitHub are never shared. *Stop sharing* deletes the link.
+
 - **Spaces** — tabs at the top (Mac: keys `1`–`9`) or the bottom bar on iPhone; swipe between them.
 - **Add** training, lessons and tournaments with **+** on their cards. Pick several days at once.
 - **Edit** — tap any session in *Today* or in the week strip: mark it done, change it or delete it.

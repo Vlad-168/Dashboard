@@ -4,7 +4,7 @@
 
   /* ═════════════════════════ Constants & helpers ═════════════════════════ */
   const BASE = window.DASHBOARD_CONFIG || {};
-  const CFG_VERSION = 6;
+  const CFG_VERSION = 7;
   const LOCALE = "en-GB";
 
   const $ = (s, r = document) => r.querySelector(s);
@@ -26,6 +26,7 @@
   const ROLES = { play: "Playing", coach: "With my players" };
 
   const DEFAULT_SPACES = [
+    { id: "home", name: "Home", icon: "🏠", widgets: ["calendar"] },
     { id: "work", name: "Work", icon: "💼", widgets: ["github", "todo", "focus", "today"], repos: [] },
     { id: "sport", name: "Training", icon: "🏋️", widgets: ["today", "tournaments", "week", "stats", "todo"] },
     { id: "coach", name: "Coaching", icon: "🎾", widgets: ["lessons", "lessonsWeek", "tournaments", "coachStats", "todo"] },
@@ -139,6 +140,10 @@
     if (v < 6 && !spaces.some((sp) => sp.id === "insta")) {
       const at = spaces.findIndex((sp) => sp.id === "life");
       spaces.splice(at < 0 ? spaces.length : at, 0, clone(DEFAULT_SPACES.find((sp) => sp.id === "insta")));
+    }
+    if (v < 7 && !spaces.some((sp) => sp.id === "home")) {
+      spaces.unshift(clone(DEFAULT_SPACES.find((sp) => sp.id === "home")));
+      store.set("space", "home"); // open the new main screen once
     }
     db.set("cfg", { ...o, ...extra, spaces, schedule, lessons, v: CFG_VERSION });
     loadConfig();
@@ -453,6 +458,7 @@
     igOverview: { size: "", render: wIgOverview },
     igChart: { size: "wide", render: wIgChart },
     igPosts: { size: "full", render: wIgPosts },
+    calendar: { size: "full", render: wCalendar },
   };
 
   function card(title, size, body, extra = "") {
@@ -937,6 +943,200 @@
     return el;
   }
 
+  /* ═════════════════════════ Home: one calendar for everything ═════════════════════════ */
+  const C = window.Cal;
+  // All training, lessons (own + bot) and tournaments between two dates, as calendar events
+  function collectEvents(from, to, opt = {}) {
+    const o = { training: true, lessons: true, tournaments: true, names: true, places: true, share: false, ...opt };
+    const out = [], nowMs = Date.now();
+    for (let d = new Date(from); ymd(d) <= ymd(to); d = addDays(d, 1)) {
+      const k = ymd(d);
+      if (o.training) for (const w of workoutsFor(d)) {
+        const [h, m] = (w.time || "0:0").split(":").map(Number);
+        const end = new Date(d); end.setHours(h, m + (+w.duration || 60), 0, 0);
+        out.push({ key: `w-${w.id}-${k}`, date: k, time: w.time, dur: +w.duration || 60, title: w.title, sub: TYPES[typeOf(w)][1],
+          kind: "training", tone: typeOf(w), icon: TYPES[typeOf(w)][0],
+          status: isDone(d, w) ? "done" : end.getTime() < nowMs ? "missed" : "planned", ref: { type: "w", id: w.id } });
+      }
+      if (o.lessons) for (const l of lessonsFor(d)) {
+        const st = lessonStatus(d, l);
+        if (o.share && st === "cancel") continue;
+        const sport = SPORTS[sportOf(l)];
+        out.push({ key: `l-${String(l.id).replace(/[^\w-]/g, "")}-${k}`, date: k, time: l.time, dur: +l.duration || 60,
+          title: o.names ? l.client : `${sport[1]} lesson`, sub: o.places ? l.place || "" : "",
+          kind: "lesson", tone: sportOf(l), icon: o.share ? sport[0] : l.source === "bot" ? "🤖" : sport[0], status: st, ref: { type: "l", id: l.id } });
+      }
+    }
+    if (o.tournaments) for (const t of tournaments()) {
+      if ((t.to || t.from) < ymd(from) || t.from > ymd(to)) continue;
+      out.push({ key: `t-${t.id}`, date: t.from, to: t.to || t.from, title: t.title, kind: "tournament", tone: "tour", icon: "🏆",
+        sub: [ROLES[t.role], o.places ? t.place : ""].filter(Boolean).join(" · "), ref: { type: "t", id: t.id } });
+    }
+    return out;
+  }
+
+  let calView = store.get("calView", isMobile() ? "list" : "week");
+  let calAnchor = new Date(), calSel = ymd(new Date());
+  let calFilter = store.get("calFilter", { training: true, lessons: true, tournaments: true });
+  function calRange() {
+    if (calView === "month") { const first = new Date(calAnchor.getFullYear(), calAnchor.getMonth(), 1), s = mondayOf(first); return [s, addDays(s, 41)]; }
+    if (calView === "list") return [new Date(calAnchor), addDays(calAnchor, 20)];
+    const mon = mondayOf(calAnchor); return [mon, addDays(mon, 6)];
+  }
+  function wCalendar(size) {
+    const todayK = ymd(new Date()), [from, to] = calRange();
+    const events = collectEvents(from, to, calFilter);
+    const index = new Map(events.map((e) => [e.key, e]));
+    const counts = { training: 0, lesson: 0, tournament: 0 };
+    events.forEach((e) => { if (e.date >= ymd(from) && e.status !== "cancel") counts[e.kind]++; });
+    let view;
+    if (calView === "month") {
+      const selList = events.filter((e) => e.date === calSel || (e.to && e.date <= calSel && calSel <= e.to));
+      view = C.monthHTML(events, calAnchor, todayK, calSel) +
+        `<div class="cal-sel">${C.listHTML(selList, calSel, 1, `Nothing on ${fmtDate(parseYmd(calSel), { weekday: "long", day: "numeric", month: "long" })}`)}</div>`;
+    } else if (calView === "list") view = C.listHTML(events, ymd(calAnchor), 21, "Nothing planned in the next three weeks");
+    else view = C.weekHTML(events, calAnchor, todayK);
+    const filterChip = (k, label, n) => `<button class="cal-filter f-${k} ${calFilter[k] ? "on" : ""}" data-cal-filter="${k}" aria-pressed="${!!calFilter[k]}">${label}<b>${n}</b></button>`;
+    const body = `<div class="cal-toolbar">
+        <div class="cal-nav"><button class="icon-btn sm" data-cal-nav="-1" aria-label="Previous">‹</button><button class="btn sm" data-cal-nav="0">Today</button><button class="icon-btn sm" data-cal-nav="1" aria-label="Next">›</button>
+          <span class="cal-range">${C.rangeLabel(calView, calAnchor)}</span></div>
+        <div class="cal-filters">${filterChip("training", "🏋️ Training", counts.training)}${filterChip("lessons", "🎾 Lessons", counts.lesson)}${filterChip("tournaments", "🏆 Tournaments", counts.tournament)}</div>
+      </div>
+      <div class="cal-view v-${calView}">${view}</div>`;
+    const shared = !!db.get("share", null)?.gistId;
+    const head = `<div class="seg cal-views">${[["week", "Week"], ["month", "Month"], ["list", "List"]].map(([k, l]) => `<button data-cal-view="${k}" class="${k === calView ? "on" : ""}">${l}</button>`).join("")}</div>
+      <button class="btn sm share-btn ${shared ? "is-shared" : ""}" data-cal-share>${shared ? "● Shared" : "Share"}</button>`;
+    const el = card("Calendar", size, body, head);
+    requestAnimationFrame(() => {
+      const w = $(".cal-week", el), t = $(".cal-col.is-today", el);
+      if (w && t && w.scrollWidth > w.clientWidth) w.scrollLeft = t.offsetLeft - (w.clientWidth - t.clientWidth) / 2;
+    });
+    const rerender = () => { const n = wCalendar(size); n.classList.add("no-enter"); el.replaceWith(n); };
+    el.onclick = (e) => {
+      const nav = e.target.closest("[data-cal-nav]"), v = e.target.closest("[data-cal-view]"), f = e.target.closest("[data-cal-filter]");
+      const ev = e.target.closest("[data-ev]"), cell = e.target.closest(".cal-cell[data-day]"), sh = e.target.closest("[data-cal-share]");
+      if (sh) return openShareSheet();
+      if (ev) {
+        const item = index.get(ev.dataset.ev); if (!item) return;
+        const d = parseYmd(ev.dataset.date);
+        if (item.ref.type === "w") openWorkoutSheet({ item: workoutsFor(d).find((w) => w.id === item.ref.id), date: d });
+        if (item.ref.type === "l") openLessonSheet({ item: lessonsFor(d).find((l) => l.id === item.ref.id), date: d });
+        if (item.ref.type === "t") openTourSheet(tournaments().find((t) => t.id === item.ref.id));
+        return;
+      }
+      if (nav) { const dir = +nav.dataset.calNav; calAnchor = dir ? C.shift(calView, calAnchor, dir) : new Date(); if (!dir) calSel = ymd(new Date()); haptic(); return rerender(); }
+      if (v) { calView = v.dataset.calView; store.set("calView", calView); haptic(); return rerender(); }
+      if (f) { calFilter = { ...calFilter, [f.dataset.calFilter]: !calFilter[f.dataset.calFilter] }; store.set("calFilter", calFilter); haptic(); return rerender(); }
+      if (cell) { calSel = cell.dataset.day; haptic(); return rerender(); }
+    };
+    return el;
+  }
+
+  /* ── Sharing: a read-only page + calendar subscription, published to a secret gist ── */
+  const SHARE_DEFAULT = { training: true, lessons: true, tournaments: true, names: false, places: true };
+  const shareInfo = () => db.get("share", null);
+  const shareUrl = (s) => `${location.origin}${location.pathname.replace(/[^/]*$/, "")}share.html#${s.gistId}`;
+  const icsUrl = (s) => `https://gist.githubusercontent.com/${s.owner}/${s.gistId}/raw/calendar.ics`;
+  async function ghApi(path, opts = {}) {
+    const r = await fetch("https://api.github.com" + path, { cache: "no-store", ...opts,
+      headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token()}`, ...(opts.body ? { "Content-Type": "application/json" } : {}) } });
+    if (!r.ok && r.status !== 204) throw new Error(r.status === 401 ? "invalid token" : r.status === 403 || r.status === 404 ? "the token has no Gists access" : "GitHub " + r.status);
+    return r.status === 204 ? null : r.json();
+  }
+  function buildShare(opts) {
+    const from = addDays(new Date(), -7), to = addDays(new Date(), 56);
+    const events = collectEvents(from, to, { ...opts, share: true }).map(({ ref, ...e }) => e);
+    const title = cfg.name ? `${cfg.name}’s schedule` : "Schedule";
+    return { json: { v: 1, title, from: ymd(from), to: ymd(to), generatedAt: new Date().toISOString(), events }, ics: C.icsText(events, { name: title }) };
+  }
+  const shareFiles = (b) => ({ "share.json": { content: JSON.stringify(b.json) }, "calendar.ics": { content: b.ics } });
+  let shareTimer = null;
+  function schedulePublish() { if (shareInfo()?.gistId) { clearTimeout(shareTimer); shareTimer = setTimeout(() => publishShare(false), 4000); } }
+  async function publishShare(force) {
+    const s = shareInfo(); if (!s?.gistId || !token()) return;
+    const b = buildShare(s.opts || SHARE_DEFAULT);
+    const hash = JSON.stringify([b.json.title, b.json.events, s.opts]);
+    if (!force && store.get("shareHash", "") === hash && Date.now() - store.get("shareAt", 0) < 6 * 3600e3) return;
+    try {
+      await ghApi(`/gists/${s.gistId}`, { method: "PATCH", body: JSON.stringify({ files: shareFiles(b) }) });
+      store.set("shareHash", hash); store.set("shareAt", Date.now());
+    } catch (e) { if (/404|no Gists access/.test(e.message)) { /* gist removed elsewhere */ } }
+  }
+  function openShareSheet() {
+    const s = shareInfo(), opts = { ...SHARE_DEFAULT, ...(s?.opts || {}) };
+    const sel = (keys) => keys.filter((k) => opts[k]);
+    const optionsHTML = `
+      <div class="field"><span>Show</span>${chips("inc", [["training", "🏋️ Training"], ["lessons", "🎾 Lessons"], ["tournaments", "🏆 Tournaments"]], sel(["training", "lessons", "tournaments"]), true)}</div>
+      <div class="field"><span>Details</span>${chips("priv", [["names", "Players’ names"], ["places", "Courts & places"]], sel(["names", "places"]), true)}</div>
+      <p class="hint">Prices, earnings, tasks and GitHub are never shared. Without names, lessons show as “Padel lesson”. The link shows the last week and the next 8 weeks and updates when you change your schedule.</p>`;
+    const readOpts = () => {
+      const inc = readChips("inc"), priv = readChips("priv");
+      return { training: inc.includes("training"), lessons: inc.includes("lessons"), tournaments: inc.includes("tournaments"), names: priv.includes("names"), places: priv.includes("places") };
+    };
+    const html = s?.gistId
+      ? `${sheetHead("Share calendar", "Anyone with the link can view — not edit")}
+        <div class="share-link"><input readonly value="${esc(shareUrl(s))}" aria-label="Share link" /><button type="button" class="btn sm" data-act="copy">Copy</button></div>
+        <div class="share-actions">
+          <button type="button" class="primary" data-act="native">Send link…</button>
+          <a class="btn" href="${esc(shareUrl(s))}" target="_blank" rel="noopener">Open page</a>
+          <button type="button" class="btn" data-act="ics">Download .ics</button>
+        </div>
+        <div class="field"><span>Calendar subscription</span><div class="share-link"><input readonly value="${esc(icsUrl(s))}" aria-label="Calendar subscription link" /><button type="button" class="btn sm" data-act="copy-ics">Copy</button></div>
+          <p class="hint">Paste into Apple Calendar (File → New Calendar Subscription) or Google Calendar (Other calendars → From URL) — it stays up to date.</p></div>
+        ${optionsHTML}
+        <p class="err" id="itemErr"></p>
+        <footer class="item-foot"><button type="button" class="ghost danger" data-act="stop">Stop sharing</button><button class="primary" value="save">Save options</button></footer>`
+      : `${sheetHead("Share calendar", "Create a read-only link to your schedule")}${optionsHTML}
+        <div class="share-actions"><button type="button" class="btn" data-act="ics">Download .ics</button></div>
+        <p class="err" id="itemErr"></p>
+        <footer class="item-foot"><span></span><button class="primary" value="save">Create link</button></footer>`;
+    openSheet(html, () => {
+      const o = readOpts();
+      if (!o.training && !o.lessons && !o.tournaments) return "Pick at least one thing to show";
+      if (!token()) return "Add your GitHub token first (Settings → GitHub)";
+      const btn = $("#itemForm button[value=save]"); btn.disabled = true; btn.textContent = "Publishing…";
+      (async () => {
+        try {
+          const b = buildShare(o);
+          if (s?.gistId) {
+            db.set("share", { ...s, opts: o });
+            await publishShare(true);
+            toast("Share options saved");
+          } else {
+            const g = await ghApi("/gists", { method: "POST", body: JSON.stringify({ description: "Shared schedule (Dashboard) — anyone with the link can view", public: false, files: shareFiles(b) }) });
+            db.set("share", { gistId: g.id, owner: g.owner?.login || store.get("owner", ""), opts: o, created: Date.now() });
+            store.set("shareHash", JSON.stringify([b.json.title, b.json.events, o])); store.set("shareAt", Date.now());
+            toast("Link created");
+            renderGrid(); openShareSheet();
+            return;
+          }
+          renderGrid();
+        } catch (e) { toast("Couldn’t share: " + e.message); }
+      })();
+    }, async (act, btn) => {
+      const cur = shareInfo();
+      const copy = async (text) => { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch { toast("Select the link and copy it"); } };
+      if (act === "copy") copy(shareUrl(cur));
+      if (act === "copy-ics") copy(icsUrl(cur));
+      if (act === "native") {
+        const data = { title: buildShare(cur.opts).json.title, text: "My training & coaching schedule", url: shareUrl(cur) };
+        if (navigator.share) { try { await navigator.share(data); } catch {} } else copy(data.url);
+      }
+      if (act === "ics") {
+        const b = buildShare(readOpts());
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([b.ics], { type: "text/calendar" }));
+        a.download = "schedule.ics"; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      }
+      if (act === "stop" && confirm("Stop sharing? The link and the calendar subscription will stop working.")) {
+        try { await ghApi(`/gists/${cur.gistId}`, { method: "DELETE" }); } catch {}
+        db.set("share", null); store.del("shareHash");
+        itemDlg.close(); renderGrid(); toast("Sharing stopped");
+      }
+    });
+  }
+
   /* ═════════════════════════ Grid ═════════════════════════ */
   function renderGrid(dir = 0) {
     const grid = $("#grid");
@@ -957,7 +1157,7 @@
     tilted = null;
     animateIn(grid);
   }
-  function renderAll() { renderHeader(); renderGrid(); }
+  function renderAll() { renderHeader(); renderGrid(); schedulePublish(); }
 
   db.onRemoteChange(() => {
     const busy = document.activeElement?.matches("input, textarea") || $("#itemSheet").open;
@@ -1377,6 +1577,7 @@
   if (!token()) { showLock(); window.__booted = true; return; }
   document.body.classList.remove("locked");
   migrateConfig();
+  active = store.get("space", active); // a migration may open a new space (e.g. Home)
   renderSpaces(); renderAll(); renderSyncStatus();
   window.__booted = true;
   sync.schedule(0);
